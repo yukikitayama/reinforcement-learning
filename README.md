@@ -10,11 +10,15 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/space_invaders_duel_eps4500_short.gif)
 
+* Asynchronous Advantage Actor Critic in CartPole.
+
+![video_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/cartpole_a3c.gif)
+
 * Moving average rewards from the above result (Unsatisfactory...)
 
 ![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_duel_space_invaders.png)
 
-* Below is moving average reward from Asynchronous Advantage Actor Critic (A3C). Looks nice, but it's CartPole...
+* Below is moving average reward from A3C. Looks nice, but it's CartPole...
 
 ![image_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_a3c_cartpole.png)
 
