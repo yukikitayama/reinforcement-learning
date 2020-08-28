@@ -2,6 +2,8 @@
 
 ## Overview
 
+This is an ongoing self-learning repository of reinforcement learning. My curret goal is to make a result that I can be happy with from OpenAI Gym Atari Space Invaders environment. Usually I'm working on during weekend when I have time.
+
 ## Results
 
 ## Algorithms
