@@ -6,7 +6,17 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ## Results
 
+* Dueling architecture Double Q Learning with prioritized experience replay after training 4,500 episodes.
+
 ![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/space_invaders_duel_eps4500_short.gif)
+
+* Moving average rewards from the above result (Unsatisfactory...)
+
+![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_duel_space_invaders.png)
+
+* Below is moving average reward from Asynchronous Advantage Actor Critic (A3C). Looks nice, but it's CartPole...
+
+![image_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_a3c_cartpole.png)
 
 ## Algorithms
 
