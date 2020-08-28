@@ -6,6 +6,8 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ## Results
 
+![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/space_invaders_duel_eps4500_short.gif)
+
 ## Algorithms
 
 * Deep Q Network (DQN)
