@@ -23,7 +23,7 @@ ENV = 'MountainCar-v0'
 We add a small value to the denominator when we normalize returns by std to
 avoid zero denominator division. 
 """
-eps = np.finfo(np.float32).eps.item() # Smallest number s.t. 1.0 + eps != 1.0
+eps = np.finfo(np.float32).eps.item()  # Smallest number s.t. 1.0 + eps != 1.0
 MODEL = 'actor_critic_mountain_car.h5'
 
 # set seed
@@ -78,8 +78,8 @@ while True:
 
         for timestep in range(1, max_steps_per_episode):
 
-            state = tf.convert_to_tensor(state) # (2,)
-            state = tf.expand_dims(state, 0) # (1, 2)
+            state = tf.convert_to_tensor(state)  # (2,)
+            state = tf.expand_dims(state, 0)  # (1, 2)
 
             # predict action probabilities for each action and value of this
             # state (estimated future rewards)

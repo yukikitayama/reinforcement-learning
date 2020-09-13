@@ -43,5 +43,3 @@ with imageio.get_writer(VIDEO, fps=30) as video:
         video.append_data(screen)
         # Go to next time step
         prev_state = state
-
-env.close()
