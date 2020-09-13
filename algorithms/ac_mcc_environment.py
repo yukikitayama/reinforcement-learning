@@ -40,7 +40,7 @@ print('Next state', state)
 print('Reward', reward)
 print('**********')
 
-# Make gid
+# Make gif
 print('***** Make random agent *****')
 sampled_states = []
 sampled_actions = []
