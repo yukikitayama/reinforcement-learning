@@ -11,6 +11,8 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 import matplotlib.pyplot as plt
+# my utils
+from algorithms.ac_mc_model import get_actor_critic
 
 # parameters
 seed = 42
@@ -22,6 +24,7 @@ We add a small value to the denominator when we normalize returns by std to
 avoid zero denominator division. 
 """
 eps = np.finfo(np.float32).eps.item() # Smallest number s.t. 1.0 + eps != 1.0
+MODEL = 'actor_critic_mountain_car.h5'
 
 # set seed
 tf.random.set_seed(seed)
@@ -47,15 +50,17 @@ num_actions = 3
 num_hidden = 128
 
 # model
-inputs = layers.Input(shape=(num_inputs,))
-common = layers.Dense(num_hidden, activation='relu')(inputs)
-# actor
-action = layers.Dense(num_actions, activation='softmax')(common)
-# critic
-critic = layers.Dense(1)(common)
-model = keras.Model(inputs=inputs, outputs=[action, critic])
+# inputs = layers.Input(shape=(num_inputs,), name='input_layer')
+# common = layers.Dense(num_hidden, activation='relu', name='common_dense_layer')(inputs)
+# # actor
+# action = layers.Dense(num_actions, activation='softmax', name='actor_output_layer')(common)
+# # critic
+# critic = layers.Dense(1, activation='linear', name='critic_output_layer')(common)
+# model = keras.Model(inputs=inputs, outputs=[action, critic])
+
 
 # training
+model = get_actor_critic(num_inputs, num_actions, num_hidden)
 optimizer = keras.optimizers.Adam(learning_rate=0.01)
 huber_loss = keras.losses.Huber()
 action_probs_history = []
@@ -69,7 +74,7 @@ while True:
     state = env.reset()
     episode_reward = 0
 
-    with tf.GradientTape as tape:
+    with tf.GradientTape() as tape:
 
         for timestep in range(1, max_steps_per_episode):
 
@@ -97,6 +102,10 @@ while True:
             episode_reward += reward
 
             if done:
+                # debug
+                print('state at done', state[0])
+
+                # Break for for loop
                 break
 
         # Running reward is slowly updated by accumulated rewards from each
@@ -125,3 +134,46 @@ while True:
         critic_losses = []
         # Calculate loss to update network
         for log_prob, value, ret in history:
+
+            # actor loss
+            # Is diff advantage?
+            diff = ret - value
+            # - log probability multiplied by advantage will be policy gradient
+            actor_losses.append(-log_prob * diff)
+
+            # critic loss
+            critic_losses.append(
+                huber_loss(tf.expand_dims(value, 0), tf.expand_dims(ret, 0))
+            )
+
+        # Backpropagation
+        loss_value = sum(actor_losses) + sum(critic_losses)
+        # Get gradients
+        grads = tape.gradient(loss_value, model.trainable_variables)
+        # Gradient ascent
+        optimizer.apply_gradients(zip(grads, model.trainable_variables))
+
+        # Clear history of action probabilities, critic values, and rewards
+        action_probs_history.clear()
+        critic_value_history.clear()
+        rewards_history.clear()
+
+        # Go to the next episode
+
+    # Monitoring
+    episode_count += 1
+    if episode_count % 10 == 0:
+        template = "running reward: {:.2f} at episode {}"
+        print(template.format(running_reward, episode_count))
+        model.save_weights(MODEL)
+        print('Saved model')
+
+    # Break for the most outside while loop
+    if running_reward > 195:
+        print("Solved at episode {}".format(episode_count))
+        break
+
+    # Test
+    if episode_count == 1000:
+        print('Currently only testing so break training')
+        break
