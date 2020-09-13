@@ -18,6 +18,10 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ![video_03](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/cartpole_a3c.gif)
 
+* Actor Critic in Mountain Car
+
+![video_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/actor_critic_mountaincar.gif)
+
 * Moving average rewards from the above result (Unsatisfactory...)
 
 ![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_duel_space_invaders.png)
