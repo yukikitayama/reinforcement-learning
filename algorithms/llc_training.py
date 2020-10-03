@@ -3,6 +3,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
+import pickle
 # User defined classes and functions
 from algorithms.llc_model import actor, critic
 from algorithms.OUActionNoise import OUActionNoise
@@ -16,18 +17,23 @@ ENV = 'LunarLanderContinuous-v2'
 STD_DEV = 0.2
 LEARNING_RATE_ACTOR = 0.001
 LEARNING_RATE_CRITIC = 0.002
-TOTAL_EPISODES = 30
+EPISODES_TRAINING = 30
 GAMMA = 0.99
 TAU = 0.005
 BUFFER_CAPACITY = 10000
 BATCH_SIZE = 64
-MONITORING_INTERVAL = 1
+MONITOR_INTERVAL = 1
+SAVE_INTERVAL = 10
 MA = 10  # to calculate moving average of rewards
 SEED = 0
 # True if you want to visualize agent and environment of each training, and if
 # it's not using Jupyter Notebook, because env.render() does not work in
 # Notebook.
 RENDER = True
+PATH_REWARD_01 = '../objects/llc_ddpg_ma_reward.pkl'
+PATH_REWARD_02 = '../objects/llc_ddpg_ep_reward.pkl'
+PATH_MODEL_01 = '../model/llc_ddpg_target_actor.h5'
+PATH_MODEL_02 = '../model/llc_ddpg_target_critic.h5'
 
 
 # Training
@@ -71,7 +77,7 @@ def main():
     # Store average rewards of the last several episodes
     avg_reward = []
 
-    for ep in range(TOTAL_EPISODES):
+    for ep in range(EPISODES_TRAINING):
 
         # Initialize training
         prev_state = env.reset()
@@ -88,8 +94,6 @@ def main():
             # Get continuous action
             action = policy(state=tf_prev_state, noise_object=ou_noise,
                             actor_model=actor_model, bound=bound)
-
-            # print('action', action)
 
             # Get reward and next state
             state, reward, done, info = env.step(action)
@@ -118,18 +122,39 @@ def main():
         # Get moving average reward to observe if there is improvement
         ma_reward = np.mean(ep_reward[-MA:])
 
-        # Monitoring training
-        if ep % MONITORING_INTERVAL == 0:
+        # Monitor training
+        if ep % MONITOR_INTERVAL == 0:
             monitoring(curr_episode=ep, ma_reward=ma_reward)
 
         # Collect the moving average reward for evaluation
         avg_reward.append(ma_reward)
 
+        # Periodically save training result
+        if ep % SAVE_INTERVAL == 0:
+            # Moving average reward
+            pickle.dump(avg_reward, open(PATH_REWARD_01, 'wb'))
+            # Total rewards of each episode
+            pickle.dump(ep_reward, open(PATH_REWARD_02, 'wb'))
+            # Target actor
+            target_actor.save_weights(PATH_MODEL_01)
+            # Target critic
+            target_critic.save_weights(PATH_MODEL_02)
+            print('************************************')
+            print('Saved rewards and models temporarily')
+            print('************************************')
+
     # Save training results
     # Moving average of rewards
+    pickle.dump(avg_reward, open(PATH_REWARD_01, 'wb'))
     # Total rewards of each episode
+    pickle.dump(ep_reward, open(PATH_REWARD_02, 'wb'))
     # Target actor
+    target_actor.save_weights(PATH_MODEL_01)
     # Target critic
+    target_critic.save_weights(PATH_MODEL_02)
+    print('***************************************')
+    print('Saved rewards and models after training')
+    print('***************************************')
 
 
 if __name__ == "__main__":
