@@ -5,7 +5,7 @@ import tensorflow as tf
 class Buffer:
     def __init__(self, buffer_capacity, batch_size, num_states, num_actions,
                  actor_model, critic_model, target_actor, target_critic,
-                 gamma, actor_optimizer, critic_optimizer):
+                 actor_optimizer, critic_optimizer, gamma):
         self.buffer_capacity = buffer_capacity
         self.batch_size = batch_size
         self.buffer_counter = 0
@@ -23,6 +23,11 @@ class Buffer:
 
     def record(self, obs_tuple):
         index = self.buffer_counter % self.buffer_capacity
+        # print('obs_tuple[0]', obs_tuple[0])
+        # print('obs_tuple[1]', obs_tuple[1])
+        # print('obs_tuple[2]', obs_tuple[2])
+        # print('obs_tuple[3]', obs_tuple[3])
+
         self.state_buffer[index] = obs_tuple[0]
         self.action_buffer[index] = obs_tuple[1]
         self.reward_buffer[index] = obs_tuple[2]
@@ -47,8 +52,8 @@ class Buffer:
         record_range = min(self.buffer_counter, self.buffer_capacity)
         indices = np.random.choice(record_range, self.batch_size)
         state_batch = tf.convert_to_tensor(self.state_buffer[indices])
-        action_batch = tf.covert_to_tensor(self.action_buffer[indices])
-        reward_batch = tf.convert_to_tendor(self.reward_buffer[indices])
+        action_batch = tf.convert_to_tensor(self.action_buffer[indices])
+        reward_batch = tf.convert_to_tensor(self.reward_buffer[indices])
         reward_batch = tf.cast(reward_batch, dtype=tf.float32)
         next_state_batch = tf.convert_to_tensor(self.next_state_buffer[indices])
 

@@ -1,4 +1,3 @@
-import gym
 import tensorflow as tf
 import numpy as np
 
@@ -22,6 +21,7 @@ def policy(state, noise_object, actor_model, bound):
     :param state:
     :param noise_object: In practice, this is Ornstein-Uhlenbeck process in DDPG
     :param actor_model:
+    :param bound:
     :return:
     """
     sampled_actions = tf.squeeze(actor_model(state))
@@ -30,7 +30,7 @@ def policy(state, noise_object, actor_model, bound):
     sampled_actions = sampled_actions.numpy() + noise
     # Adjust continuous actions to be within the permitted bound
     legal_action = np.clip(sampled_actions, -bound, bound)
-    return [np.squeeze(legal_action)]
+    return np.squeeze(legal_action).tolist()
 
 
 def environment_spec(env):
@@ -38,9 +38,14 @@ def environment_spec(env):
     num_actions = env.action_space.shape[0]
     bound = env.action_space.high[0]
     print('***** About environment ******')
-    print(f'Environment name: {ENV}')
+    print(f'Environment name: {env}')
     print(f'State space: {num_states}')
     print(f'Action space: {num_actions}')
     print(f'Action bound: {bound}')
     print('******************************')
     return num_states, num_actions, bound
+
+
+def monitoring(curr_episode, ma_reward):
+    # print(f'Episode: {curr_episode}, MA reward: {ma_reward:.,1f}')
+    print(f'Episode: {curr_episode}, MA reward: {ma_reward}')
