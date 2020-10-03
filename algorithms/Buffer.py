@@ -51,7 +51,8 @@ class Buffer:
         reward_batch = tf.convert_to_tendor(self.reward_buffer[indices])
         reward_batch = tf.cast(reward_batch, dtype=tf.float32)
         next_state_batch = tf.convert_to_tensor(self.next_state_buffer[indices])
-        # Critic
+
+        # Update Critic
         with tf.GradientTape() as tape:
             target_actions = self.target_actor(next_state_batch)
             y = (reward_batch + self.gamma
@@ -65,7 +66,7 @@ class Buffer:
         self.critic_optimizer.apply_gradients(
             zip(critic_grad, self.critic_model.trainable_variables)
         )
-        # Actor
+        # Updae Actor
         with tf.GradientTape() as tape:
             actions = self.actor_model(state_batch)
             critic_value = self.critic_model([state_batch, actions])
