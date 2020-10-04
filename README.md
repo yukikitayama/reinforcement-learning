@@ -10,6 +10,10 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/space_invaders_duel_eps4500_short.gif)
 
+* Lunar lander continuous environment by using Deep Deterministic Policy Gradient. (Fail)
+
+![video_05](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/llc_ddpg.gif)
+
 * Deep Deterministic Policy Gradient (DDPG) in Pendulum environment
 
 ![video_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/ddpg_pendulum.gif)
@@ -26,6 +30,10 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_duel_space_invaders.png)
 
+* Lunar lander DDPG moving average of rewards
+
+![image_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/llc_ddpg_moving_average_reward.png)
+
 * Moving average reward from DDPG Pendulum
 
 ![image_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/ddpg_pendulum_v2.png)
@@ -41,6 +49,14 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 * Asynchronous Advantage Actor Critic (A3C)
 * Prioritized experience replay (PER)
 * Deep Deterministic Policy Gradient (DDPG)
+
+## Environment
+
+* OpenAI Gym
+  * Space invaders
+  * Lunar lander continous
+  * Cartpole
+  * Mountain car
 
 ## Tools
 
