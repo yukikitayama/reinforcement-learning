@@ -65,33 +65,27 @@ class ForexEnv:
             done = True
 
         # Reward, position, position rate
-        reward = 0
         if action == self.position:
             reward = 0
-        # Make long position
-        elif self.position == 0 and action == 1:
+        # Make position
+        elif self.position == 0 and (action == 1 or action == 2):
             reward = 0
             self.position = action
             self.rate = curr_rate
-        # Make short position
-        elif self.position == 0 and action == 2:
-            reward = 0
-            self.position = action
-            self.rate = curr_rate
-        # Exit long position
+        # Close long position
         elif self.position == 1 and action == 0:
             reward = curr_rate - self.rate
             self.position = 0
             self.rate = 0
-        # Exist short position
+        # Close short position
         elif self.position == 2 and action == 0:
             reward = self.rate - curr_rate
             self.position = 0
             self.rate = 0
         # Not allowed action
-        elif self.position == 1 and action == 2:
+        elif (self.position == 1 and action == 2) or (self.position == 2 and action == 1):
             reward = 0
-        elif self.position == 2 and action == 1:
+        else:
             reward = 0
 
         return [next_rate, self.position], reward, done
