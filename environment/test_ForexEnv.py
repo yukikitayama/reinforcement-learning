@@ -7,21 +7,26 @@ import matplotlib.pyplot as plt
 LENGTH = 30
 SEED = 0
 PATH_SAVEFIG_01 = '../image/forex_env_test.png'
+POSITION_STATE_DIM = 3
 
 
-def print_step(next_state, reward, done):
-    return print(f'Next state=[{next_state[0]:,.2f}, {next_state[1]}], '
-                 f'Reward={reward:,.2f}, Done={done}')
+def print_step(action, curr_state, next_state, reward, done):
+    return print(
+        f'Action={action}, '
+        f'Current state=[{curr_state[0]:,.2f}, {curr_state[1]}], '
+        f'Next state=[{next_state[0]:,.2f}, {next_state[1]}], '
+        f'Reward={reward:,.2f}, Done={done}'
+    )
 
 
 def main():
     # Test constructor
-    env = ForexEnv(episode_length=LENGTH)
+    env = ForexEnv(length=LENGTH)
     print('*** Test constructor ***')
     print(env)
     print('Size', env.size)
-    print('Episode length', env.episode_length)
-    print('*** Test constructor ***\n')
+    print('Length', env.length)
+    print()
 
     # Test class variables
     print('*** Test class variables ***')
@@ -32,49 +37,58 @@ def main():
 
     # Test set_seed method
     env.set_seed(seed_int=SEED)
+    print('*** Test set_seed ***')
+    print(env)
+    print('Seed', SEED)
+    print()
 
     # Test reset method
-    env.reset()
+    reset_state = env.reset()
     print('*** Test reset method ***')
     print(env)
-    print('*** Test reset method ***\n')
+    print('Reset state', reset_state)
+    print()
 
     # Test step method
-    # From no position, make long position
+    curr_state = reset_state
+    # Open short position
     action = 1
-    state, reward, done = env.step(action)
-    print('*** Test step method by making long position ***')
+    next_state, reward, done = env.step(action)
+    print('*** Test step method by opening short position ***')
     print(env)
-    print_step(state, reward, done)
+    print_step(action, curr_state, next_state, reward, done)
     print()
 
-    # From long position, exit
-    action = 0
-    state, reward, done = env.step(action)
-    print('*** Test step method by closing long position ***')
-    print(env)
-    print_step(state, reward, done)
-    print()
-
-    # From no position to short position
-    action = 2
-    state, reward, done = env.step(action)
-    print('*** Test step method by making short position ***')
-    print(env)
-    print_step(state, reward, done)
-    print()
-
-    # From short to no position
-    action = 0
-    state, reward, done = env.step(action)
+    # Close short position
+    curr_state = next_state
+    action = 3
+    next_state, reward, done = env.step(action)
     print('*** Test step method by closing short position ***')
     print(env)
-    print_step(state, reward, done)
+    print_step(action, curr_state, next_state, reward, done)
     print()
 
-    # Test iteration
-    print('*** Test iteration and done ***')
-    state = env.reset()
+    # Open long position
+    curr_state = next_state
+    action = 2
+    next_state, reward, done = env.step(action)
+    print('*** Test step method by opening long position ***')
+    print(env)
+    print_step(action, curr_state, next_state, reward, done)
+    print()
+
+    # Close long position
+    curr_state = next_state
+    action = 3
+    next_state, reward, done = env.step(action)
+    print('*** Test step method by closing long position ***')
+    print(env)
+    print_step(action, curr_state, next_state, reward, done)
+    print()
+
+    # Test done by iterating
+    print('*** Test done by iterating ***')
+    curr_state = env.reset()
     states = []
     done = False
     dones = [done]
@@ -83,7 +97,7 @@ def main():
     total_rewards = []
     total_reward = 0
     print('Initial environment', env)
-    print('State', state)
+    print('Initial state', curr_state)
     print()
     while not done:
 
@@ -93,7 +107,7 @@ def main():
         # Get next state and reward
         next_state, reward, done = env.step(action)
         print(env)
-        print_step(next_state, reward, done)
+        print_step(action, curr_state, next_state, reward, done)
         print()
 
         # Accumulate reward
@@ -105,6 +119,9 @@ def main():
         dones.append(done)
         total_rewards.append(total_reward)
         actions.append(action)
+
+        # Iterate state
+        curr_state = next_state
 
     # Visualize
     # print(states)
@@ -128,7 +145,7 @@ def main():
     plt.title('Position time series')
     plt.xlabel('Time step')
     plt.ylabel('Position')
-    plt.yticks(range(0, env.num_actions), ['no position', 'long', 'short'])
+    plt.yticks(range(0, POSITION_STATE_DIM), ['Short', 'Flat', 'Long'])
     plt.tight_layout()
     # plt.show()
 

@@ -1,20 +1,19 @@
 """
 State
-- rate
-- position, 0: no position, 1: long, 2: short
+- Rate
+- Position
+  - 0: Short
+  - 1: Flat
+  - 2: Long
 
 Action
-- long, short, do nothing
-  - If currently the agent has a long position, only short or do nothing are
-    allowed.
+- 0: Do nothing
+- 1: Open short
+- 2: Open long
+- 3: Close
 
-Necessary method
-- set seed
-- reset
-- step
-- state space
-- action space
-- make
+Author: Yuki Kitayama
+Date: 2020-10-25
 """
 import numpy as np
 import pickle
@@ -28,20 +27,20 @@ class ForexEnv:
     data = pickle.load(open(PATH_01, 'rb'))
     size = len(data)
     num_states = 2
-    num_actions = 3
+    num_actions = 4
 
-    def __init__(self, episode_length):
+    def __init__(self, length):
         # Instance variable
         self.index = 0
-        self.episode_length = episode_length
-        self.counter = 0
-        self.position = 0
+        self.length = length
+        self.time = 0
+        self.position = 1
         self.rate = 0
 
     # String representation for debugging
     def __str__(self):
         return ('ForexEnv('
-                + 'counter=' + str(self.counter)
+                + 'time=' + str(self.time)
                 + ', position=' + str(self.position)
                 + ', rate=' + str(round(self.rate, 2))
                 + ', index=' + str(self.index)
@@ -50,41 +49,46 @@ class ForexEnv:
     def set_seed(self, seed_int):
         np.random.seed(seed_int)
 
+
     def step(self, action):
         # Current rate
-        curr_rate = self.data[self.index + self.counter]
+        curr_rate = self.data[self.index + self.time]
 
         # Next rate
-        self.counter += 1
-        next_rate = self.data[self.index + self.counter]
+        self.time += 1
+        next_rate = self.data[self.index + self.time]
 
         # Done
-        if self.counter < self.episode_length:
+        if self.time < self.length:
             done = False
         else:
             done = True
 
-        # Reward, position, position rate
-        if action == self.position:
+        # Reward, position, rate
+        # Do nothing
+        if action == 0:
             reward = 0
-        # Make position
-        elif self.position == 0 and (action == 1 or action == 2):
+            # No update position and rate
+        # Open short position
+        elif self.position == 1 and action == 1:
             reward = 0
-            self.position = action
+            self.position = 0
             self.rate = curr_rate
-        # Close long position
-        elif self.position == 1 and action == 0:
-            reward = curr_rate - self.rate
-            self.position = 0
-            self.rate = 0
-        # Close short position
-        elif self.position == 2 and action == 0:
-            reward = self.rate - curr_rate
-            self.position = 0
-            self.rate = 0
-        # Not allowed action
-        elif (self.position == 1 and action == 2) or (self.position == 2 and action == 1):
+        # Open long position
+        elif self.position == 1 and action == 2:
             reward = 0
+            self.position = 2
+            self.rate = curr_rate
+        # Close short position
+        elif self.position == 0 and action == 3:
+            reward = self.rate - curr_rate
+            self.position = 1
+            self.rate = 0
+        # Close long position
+        elif self.position == 2 and action == 3:
+            reward = curr_rate - self.rate
+            self.position = 1
+            self.rate = 0
         else:
             reward = 0
 
@@ -92,9 +96,9 @@ class ForexEnv:
 
     def reset(self):
         # Randomly initialize beginning index
-        index = np.random.randint(low=0, high=(self.size - self.episode_length))
+        index = np.random.choice(self.size - self.length)
         self.index = index
-        self.counter = 0
-        self.position = 0
+        self.time = 0
+        self.position = 1
         self.rate = 0
-        return self.data[self.index]
+        return self.data[self.index], self.position
