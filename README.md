@@ -8,39 +8,39 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 * Dueling architecture Double Q Learning with prioritized experience replay after training 4,500 episodes.
 
-![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/space_invaders_duel_eps4500_short.gif)
+![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/space_invaders_duel_eps4500_short.gif)
 
 * Lunar lander continuous environment by using Deep Deterministic Policy Gradient. (Fail)
 
-![video_05](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/llc_ddpg.gif)
+![video_05](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/llc_ddpg.gif)
 
 * Deep Deterministic Policy Gradient (DDPG) in Pendulum environment
 
-![video_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/ddpg_pendulum.gif)
+![video_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/ddpg_pendulum.gif)
 
 * Asynchronous Advantage Actor Critic in CartPole.
 
-![video_03](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/cartpole_a3c.gif)
+![video_03](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/cartpole_a3c.gif)
 
 * Actor Critic in Mountain Car
 
-![video_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/videos/actor_critic_mountaincar.gif)
+![video_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/actor_critic_mountaincar.gif)
 
 * Moving average rewards from the above result (Unsatisfactory...)
 
-![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_duel_space_invaders.png)
+![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/reward_duel_space_invaders.png)
 
 * Lunar lander DDPG moving average of rewards
 
-![image_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/llc_ddpg_moving_average_reward.png)
+![image_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/llc_ddpg_moving_average_reward.png)
 
 * Moving average reward from DDPG Pendulum
 
-![image_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/ddpg_pendulum_v2.png)
+![image_02](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/ddpg_pendulum_v2.png)
 
 * Below is moving average reward from A3C. Looks nice, but it's CartPole.
 
-![image_03](https://github.com/yukikitayama/reinforcement-learning/blob/master/images/reward_a3c_cartpole.png)
+![image_03](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/reward_a3c_cartpole.png)
 
 ## Algorithms
 
