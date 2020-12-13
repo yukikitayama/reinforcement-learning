@@ -38,8 +38,6 @@ This is an repository of reinforcement learning that I'm currently working on.
 
 ![video_04](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/actor_critic_mountaincar.gif)
 
-* Moving average rewards from the above result (Unsatisfactory...)
-
 ![image_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/reward_duel_space_invaders.png)
 
 ## Algorithm
