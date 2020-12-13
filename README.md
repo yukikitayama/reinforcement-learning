@@ -2,9 +2,15 @@
 
 ## Overview
 
-This is an ongoing self-learning repository of reinforcement learning. My curret goal is to make a result that I can be happy with from OpenAI Gym Atari Space Invaders environment. Usually I'm working on during weekend when I have time.
+This is an repository of reinforcement learning that I'm currently working on.
 
-## Results
+## Result
+
+* DQN in Lunar Lander discrete action space
+
+![video_06](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/dqn_lunar_lander.gif)
+
+![image_05](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/dqn_lunar_lander_score.png)
 
 * Dueling architecture Double Q Learning with prioritized experience replay after training 4,500 episodes.
 
@@ -42,7 +48,7 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 ![image_03](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/reward_a3c_cartpole.png)
 
-## Algorithms
+## Algorithm
 
 * Deep Q Network (DQN)
 * Dueling architecture
@@ -54,20 +60,23 @@ This is an ongoing self-learning repository of reinforcement learning. My curret
 
 * OpenAI Gym
   * Space invaders
-  * Lunar lander continous
+  * Lunar lander discrete/continous
   * Cartpole
   * Mountain car
 
-## Tools
+## Tool
 
+* OS: Ubuntu 20.04
+* GPU: NVIDIA GeForce RTX 2070
+* TensorFlow and PyTorch
 * Google Colab
 * AWS EC2 Ubuntu 18.04 g4dn.xlarge 1GPU
-  * Set up Jupyter Lab and run Jupyter Notebooks
 * AWS Deep Learning AMI 1GPU
 
-## Studying approach
+## Studying
 
 * Reinforcement Learning An Introduction, Richard S. Sutton and Andrew G. Barto
+* Grokking Deep Reinforcement Learning, Miguel Morales
 * Coursera Reinforcement Learning Specialization by University of Alberta (https://www.coursera.org/specializations/reinforcement-learning)
+* Udacity Deep Reinforcement Learning Nanodegree (https://www.udacity.com/course/deep-reinforcement-learning-nanodegree--nd893)
 * Reading papers from OpenAI Spinning Up key papers (https://spinningup.openai.com/en/latest/spinningup/keypapers.html)
-* Reading blogs.
