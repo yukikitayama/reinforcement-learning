@@ -37,7 +37,8 @@ class EGreedyExpStrategy:
         self.min_epsilon = min_epsilon
         # First makes the base values which starts from 1.0 and ends at 0.0 exponentially
         self.epsilons = 0.01 / np.logspace(-2, 0, decay_steps, endpoint=False) - 0.01
-        # Then adjust the start and end to be init_epsilon and min_epsilon respectively without changing exponential shape
+        # Then adjust the start and end to be init_epsilon and min_epsilon respectively without changing exponential
+        # shape
         self.epsilons = self.epsilons * (init_epsilon - min_epsilon) + min_epsilon
         # Use t to get an epsilon from epsilons list. Also used to fix epsilon at min.
         self.t = 0
@@ -69,41 +70,11 @@ class EGreedyExpStrategy:
         return action
 
 
-def get_make_env_fn(**kargs):
-
-    def make_env_fn(env_name, seed=None, render=None, record=False,
-                    unwrapped=False, monitor_mode=None,
-                    inner_wrappers=None, outer_wrappers=None):
-        mdir = tempfile.mkdtemp()
-        env = None
-        if render:
-            try:
-                env = gym.make(env_name, render=render)
-            except:
-                pass
-        if env is None:
-            env = gym.make(env_name)
-        if seed is not None: env.seed(seed)
-        env = env.unwrapped if unwrapped else env
-        if inner_wrappers:
-            for wrapper in inner_wrappers:
-                env = wrapper(env)
-        env = wrappers.Monitor(
-            env, mdir, force=True,
-            mode=monitor_mode,
-            video_callable=lambda e_idx: record) if monitor_mode else env
-        if outer_wrappers:
-            for wrapper in outer_wrappers:
-                env = wrapper(env)
-        return env
-
-    return make_env_fn, kargs
-
-
 class PERAgent:
     def __init__(self, online_model, target_model, gamma, value_optimizer,
                  replay_buffer, tau, training_strategy, evaluation_strategy,
-                 n_warmup_batches, update_target_every_steps):
+                 n_warmup_batches, update_target_every_steps,
+                 checkpoint_dir):
         self.online_model = online_model
         self.target_model = target_model
         self.gamma = gamma
@@ -118,14 +89,17 @@ class PERAgent:
         self.episode_reward = []
         self.episode_timestep = []
         self.episode_exploration = []
-        self.checkpoint_dir = tempfile.mkdtemp()
+        # self.checkpoint_dir = tempfile.mkdtemp()
+        self.checkpoint_dir = checkpoint_dir
         self.evaluation_scores = []
 
     def optimize_model(self, experiences):
         idxs, weights, (states, actions, rewards, next_states, is_terminals) = experiences
 
         # Set to device
+        # print('weights', weights)
         weights = self.online_model.numpy_float_to_device(weights)
+        # print('weights', weights)
 
         batch_size = len(is_terminals)
 
@@ -145,6 +119,7 @@ class PERAgent:
         # Loss
         td_error = q_sa - target_q_sa
         # Weighted importance-sampling
+        # print('weights', weights, 'td_error', td_error)
         value_loss = (weights * td_error).pow(2).mul(0.5).mean()
 
         # Gradient decsent
@@ -182,12 +157,13 @@ class PERAgent:
         """
         action = self.training_strategy.select_action(self.online_model, state)
         new_state, reward, is_terminal, info = env.step(action)
-        # ?
-        is_truncated = 'TimeLimit.truncated' in info and info['TimeLimit.truncated']
-        # ?
-        is_failure = is_terminal and not is_truncated
 
-        experience = (state, action, reward, new_state, float(is_failure))
+        # ?
+        # is_truncated = 'TimeLimit.truncated' in info and info['TimeLimit.truncated']
+        # is_failure = is_terminal and not is_truncated
+        # experience = (state, action, reward, new_state, float(is_failure))
+
+        experience = (state, action, reward, new_state, float(is_terminal))
 
         # Store data
         self.replay_buffer.store(experience)
@@ -201,7 +177,7 @@ class PERAgent:
         rs = []
         for _ in range(n_episodes):
 
-            s  = eval_env.reset()
+            s = eval_env.reset()
             d = False
             rs.append(0)
 
@@ -221,14 +197,12 @@ class PERAgent:
         torch.save(model.state_dict(),
                    os.path.join(self.checkpoint_dir, 'model.{}.tar'.format(episode_idx)))
 
-    def train(self, make_env_fn, make_env_kargs, seed, max_episodes,
+    def train(self, env, seed, max_episodes,
               goal_mean_100_reward):
-        training_start = time.time()
-
-        env = make_env_fn(**make_env_kargs, seed=seed)
         nS = env.observation_space.shape[0]
         nA = env.action_space.n
 
+        env.seed(seed)
         torch.manual_seed(seed)
         np.random.seed(seed)
         random.seed(seed)
@@ -256,6 +230,7 @@ class PERAgent:
                     experiences = self.online_model.load(samples)
                     experiences = (idxs, weights) + (experiences,)
                     # Update online model weights
+                    # print('weights', weights, 'experiences', experiences)
                     self.optimize_model(experiences)
 
                 # Update target model
@@ -269,10 +244,11 @@ class PERAgent:
                     break
 
             # Online model?
-            self.save_checkpoint(episode - 1, self.online_model)
+            # self.save_checkpoint(episode - 1, self.online_model)
 
             # Online model?
-            evaluation_score, _ = self.evaluate(self.online_model, env)
+            # evaluation_score, _ = self.evaluate(self.online_model, env)
+            evaluation_score, _ = self.evaluate(self.target_model, env)
             self.evaluation_scores.append(evaluation_score)
 
             mean_100_eval_score = np.mean(self.evaluation_scores[-100:])
@@ -282,11 +258,31 @@ class PERAgent:
             training_is_over = reached_goal_mean_reward
 
             if training_is_over:
-                if reached_goal_mean_reward: print(u'--> reached_goal_mean_reward \u2713')
+                if reached_goal_mean_reward:
+                    # print(u'--> reached_goal_mean_reward \u2713')
+                    print(f'\nEnvironment solved in {episode - 100:d} episodes!\t'
+                          f'Average Score: {mean_100_eval_score:.2f}')
                 break
 
+            # Monitor
+            print(f'\rEpisode {episode}\t'
+                  f'Average score: {mean_100_eval_score:.2f}\t'
+                  f'Epsilon: {self.training_strategy.epsilon:.3f}',
+                  end='')
+
+            if episode % 100 == 0:
+                print(f'\rEpisode {episode}\t'
+                      f'Average score: {mean_100_eval_score:.2f}\t'
+                      f'Epsilon: {self.training_strategy.epsilon:.3f}')
+
+
         final_eval_score, score_std = self.evaluate(self.online_model, env, n_episodes=100)
+        print()
         print('Training complete.')
+
+        # Save final model
+        self.save_checkpoint(episode_idx='test', model=self.target_model)
+        print('Saved model')
 
         env.close()
         del env

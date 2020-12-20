@@ -114,7 +114,7 @@ class PrioritizedReplayBuffer:
         return str(self.memory[:self.n_entries])
 
     def __str__(self):
-        return str(self.memory[:self.n_entries])
+        return 'Prioritized Experience Replay\n' + str(self.memory[:self.n_entries])
 
 
 def per_example():

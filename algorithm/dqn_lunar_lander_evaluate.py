@@ -11,7 +11,8 @@ from algorithm.dqn_agent import Agent
 # Parameter
 ENV = 'LunarLander-v2'
 MODEL = '../model/checkpoint_dqn_ll.pth'
-VIDEO = '../video/dqn_lunar_lander.gif'
+# VIDEO = '../video/dqn_lunar_lander.gif'
+VIDEO = '../video/dqn_lunar_lander.mp4'
 SCORE = '../object/dqn_lunar_lander_score.pkl'
 SAVEFIG = '../image/dqn_lunar_lander_score.png'
 EPISODE = 10

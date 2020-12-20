@@ -32,10 +32,10 @@ class DuelingQ(nn.Module):
     def __init__(self, state_size, action_size, seed):
         super(DuelingQ, self).__init__()
         self.seed = torch.manual_seed(seed)
-        self.fc1 = nn.Linear(state_size, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.value_output = nn.Linear(64, 1)
-        self.advantage_output = nn.Linear(64, action_size)
+        self.fc1 = nn.Linear(state_size, 512)
+        self.fc2 = nn.Linear(512, 128)
+        self.value_output = nn.Linear(128, 1)
+        self.advantage_output = nn.Linear(128, action_size)
 
         # GPU management
         device = 'cpu'

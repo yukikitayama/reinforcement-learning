@@ -1,6 +1,7 @@
 import gym
 import torch
 import torch.optim as optim
+import pickle
 # User defined
 from algorithm.PrioritizedReplayBuffer import PrioritizedReplayBuffer
 from algorithm.per_agent import GreedyStrategy, EGreedyExpStrategy, PERAgent
@@ -9,15 +10,15 @@ from algorithm.DuelingQNetwork import DuelingQNetwork, DuelingQ
 
 # Parameter
 ENV = 'LunarLander-v2'
-GAMMA = 0.99
+GAMMA = 0.999
 LR = 5e-4
 # print('Learning rate for optimizer', LR)
 SEED = 0
 STATE_SIZE = 8
 ACTION_SIZE = 4
 EPS_START = 1.0
-EPS_END = 0.01
-EPS_DECAY = 100000
+EPS_END = 0.1
+EPS_DECAY = 40000
 MAX_SAMPLES = 20000
 BATCH_SIZE = 64
 RANK_BASED = False
@@ -30,8 +31,9 @@ TAU = 0.1
 THRESHOLD = 200.0
 CHECKPOINT_DIR = '/home/yuki/PycharmProjects/reinforcement-learning/model'
 # MAX_EPISODES = 20000
-MAX_EPISODES = 2000
+MAX_EPISODES = 10000
 # MAX_EPISODES = 1000
+SCORE = '../object/dueling_ddqn_lunar_lander_discrete.pkl'
 
 
 def main():
@@ -95,6 +97,9 @@ def main():
         max_episodes=MAX_EPISODES,
         goal_mean_100_reward=THRESHOLD
     )
+
+    # Save score
+    pickle.dump(score, open(SCORE, 'wb'))
 
 
 if __name__ == '__main__':
