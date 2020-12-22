@@ -1,0 +1,4 @@
+# Pip install virtual environment
+env/
+# My personal expression for testing purpose pythons
+test_*.py
