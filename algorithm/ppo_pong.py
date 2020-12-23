@@ -14,6 +14,13 @@ print('device', device)
 RIGHT = 4
 LEFT = 5
 
+DISCOUNT_RATE = 0.99
+EPSILON = 0.1
+BETA = 0.01
+TMAX = 320
+SGD_EPOCH = 4
+EPISODE = 500
+
 
 # pong_utils.py
 def preprocess_single(image, bkg_color=np.array([144, 72, 17])):
@@ -167,6 +174,72 @@ def test_clipped_surrogate():
     print('rewards_normalized\n', rewards_normalized, rewards_normalized.shape)
 
 
+def collect_trajectories(env, policy, tmax, nrand=5):
+    n = 1
+
+    state_list = []
+    reward_list = []
+    prob_list = []
+    action_list = []
+
+    # Perform nrand random steps
+    for _ in range(nrand):
+        fr1, re1, _, _ = env.step(np.random.choice([RIGHT, LEFT], n))
+        fr2, re2, _, _ = env.step(0 * n)
+
+    for t in range(tmax):
+
+        batch_input = preprocess_batch([fr1, fr2])
+
+        probs = policy(batch_input).squeeze().cpu().detach().numpy()
+
+        action = np.where(np.random.rand(n) < probs, RIGHT, LEFT)
+
+        probs = np.where(action == RIGHT, probs, 1.0 - probs)
+
+        # Continue game. 0 is do nothing
+        fr1, re1, is_done, _ = env.step(action)
+        fr2, re2, is_done, _ = env.step(0 * n)
+
+        reward = re1 + re2
+
+        # Store the result
+        state_list.append(batch_input)
+        reward_list.append(reward)
+        prob_list.append(probs)
+        action_list.append(action)
+
+        # Stop if any of the trajectories is done True
+        if is_done.any():
+            break
+
+    return prob_list, state_list, action_list, reward_list
+
+
+def preprocess_batch(images, bkg_color=np.array([144, 72, 17])):
+    """
+    Returns batch data which has shape (1, 2, 80, 80).
+    """
+    list_of_images = np.asarray(images)
+
+    if len(list_of_images.shape) < 5:
+        list_of_images = np.expand_dims(list_of_images, 1)
+
+    list_of_images_prepro = np.mean(list_of_images[:, :, 34:-16:2, ::2] - bkg_color,
+                                    axis=-1) / 255.0
+
+    batch_input = np.swapaxes(list_of_images_prepro, 0, 1)
+    return torch.from_numpy(batch_input).float().to(device)
+
+
+def test_preprocess_batch(env):
+    env.reset()
+    fr1, _, _, _ = env.step(0)
+    fr2, _, _, _ = env.step(0)
+    batch_input = preprocess_batch([fr1, fr2])
+    print(batch_input.size())
+
+
 def main():
     env = gym.make(ENV)
     print('Environment', env)
@@ -176,8 +249,19 @@ def main():
     # view_environment(env)
 
     # Test clipped_surrogate
-    test_clipped_surrogate()
+    # test_clipped_surrogate()
 
+    # Test preprocess_batch
+    # test_preprocess_batch(env)
+
+    # Policy
+    policy = Policy().to(device)
+
+    # Training
+    # for e in range(EPISODE):
+
+        # Collect trajectory
+        # old_probs, states, actions, rewards = collect_trajectories(env, policy, tmax=TMAX)
 
 
 if __name__ == '__main__':
