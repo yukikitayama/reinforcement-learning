@@ -3,7 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
+import random
+import time
 
 # import pong_utils
 
@@ -13,16 +16,23 @@ device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print('device', device)
 RIGHT = 4
 LEFT = 5
+NUM_ACTION = 6
 
-DISCOUNT_RATE = 0.99
-EPSILON = 0.1
-BETA = 0.01
+# DISCOUNT_RATE = 0.99
+DISCOUNT_RATE = 0.995
+# EPSILON = 0.1
+EPSILON = 0.2  # Epsilon of clipped surrogate function to clip the ratio of current prob divided by old prob
+EPSILON_DECAY = 0.999
+BETA = 0.01  # c2 coefficient for entropy bonus
+BETA_DECAY = 0.995
 TMAX = 320
 SGD_EPOCH = 4
-EPISODE = 500
+EPISODE = 10000
+EPISODE_MONITOR = 100
+LR = 1e-4
+SEED = 0
 
 
-# pong_utils.py
 def preprocess_single(image, bkg_color=np.array([144, 72, 17])):
     img = np.mean(image[34:-16:2, ::2] - bkg_color, axis=-1) / 255.
     return img
@@ -83,6 +93,9 @@ class PolicyTNakae(nn.Module):
 
 
 class Policy(nn.Module):
+    """
+    This outputs the probability of moving right, so P(left) = 1 - P(right)
+    """
     def __init__(self):
         super(Policy, self).__init__()
         # in_channels=2 is because of 2 stacked frames
@@ -147,8 +160,11 @@ def clipped_surrogate(policy, old_probs, states, actions, rewards,
     # (7) of proximal policy optimization algorithms paper
     clipped_surrogate_objective = torch.min(ratio * rewards, clipped_ratio * rewards)
 
-    # ?
-    entropy = -(new_probs * torch.log(old_probs + 1.e-10) + (1.0 - new_probs) * (torch.log(1.0 - old_probs + 1.e-10)))
+    # An entropy regularization term, which steers new_policy towards 0.5
+    # The form for a binary prediction
+    # Adding 1.e-10 to avoid log(0) which gives nan
+    entropy = -(new_probs * torch.log(old_probs + 1.e-10) +
+                (1.0 - new_probs) * (torch.log(1.0 - old_probs + 1.e-10)))
 
     return torch.mean(clipped_surrogate_objective + beta * entropy)
 
@@ -240,10 +256,58 @@ def test_preprocess_batch(env):
     print(batch_input.size())
 
 
+def play(env, policy, total_time=2000, preprocess=None, nrand=5):
+    env.reset()
+
+    env.render()
+
+    env.step(1)
+
+    # Random steps in the beginning
+    for _ in range(nrand):
+
+        env.render()
+
+        fr1, re1, is_done, _ = env.step(np.random.choice([RIGHT, LEFT]))
+        fr2, re2, is_done, _ = env.step(0)
+
+    # Store frames in each time step
+    anim_frames = []
+
+    for _ in range(total_time):
+
+        env.render()
+        time.sleep(0.05)
+
+        frame_input = preprocess_batch([fr1, fr2])
+        prob = policy(frame_input)
+
+        # RIGHT = 4, LEFT = 5
+        action = RIGHT if random.random() < prob else LEFT
+        fr1, _, is_done, _ = env.step(action)
+        fr2, _, is_done, _ = env.step(0)
+
+        if preprocess is None:
+            anim_frames.append(fr1)
+        else:
+            anim_frames.append(preprocess(fr1))
+
+        if is_done:
+            break
+
+    env.close()
+
+
 def main():
     env = gym.make(ENV)
     print('Environment', env)
     print('List of available actions:', env.unwrapped.get_action_meanings())
+
+    # Seed
+    env.seed(SEED)
+    torch.manual_seed(SEED)
+    np.random.seed(SEED)
+    random.seed(SEED)
 
     # View environment
     # view_environment(env)
@@ -257,11 +321,83 @@ def main():
     # Policy
     policy = Policy().to(device)
 
-    # Training
-    # for e in range(EPISODE):
+    # Optimizer
+    optimizer = optim.Adam(policy.parameters(), lr=LR)
 
-        # Collect trajectory
-        # old_probs, states, actions, rewards = collect_trajectories(env, policy, tmax=TMAX)
+    # Random play
+    # play(env, policy, total_time=200, preprocess=None, nrand=5)
+
+    # Initialization for training
+    epsilon = EPSILON
+    beta = BETA
+    rewards = []
+
+    # Training
+    for episode in range(EPISODE):
+
+        # Initialization for each episode
+        state_history = []
+        action_history = []
+        action_prob_history = []
+        reward_history = []
+        env.reset()
+        total_rewards = 0
+
+        # Random steps in the beginning
+        for _ in range(5):
+            state1, reward1, is_done, _ = env.step(np.random.choice([RIGHT, LEFT]))
+            state2, reward2, is_done, _ = env.step(0)
+
+        for t in range(100000):
+
+            # Preprocess for policy
+            batch_input = preprocess_batch([state1, state2])
+
+            # Get action probability and the action
+            probs = policy(batch_input).squeeze().cpu().detach().numpy()
+            action = np.where(np.random.rand(1) < probs, RIGHT, LEFT)
+            probs = np.where(action == RIGHT, probs, 1.0 - probs)
+
+            # Advance the game
+            state1, reward1, done, _ = env.step(action)
+            state2, reward2, done, _ = env.step(0)  # 0 is no action
+
+            reward = reward1 + reward2
+
+            # Store experience
+            state_history.append(batch_input)
+            action_history.append(action)
+            reward_history.append(reward)
+            action_prob_history.append(probs)
+
+            if done:
+                total_rewards = sum(reward_history)
+                break
+
+        # print(f'Episode: {episode}\tTrajectory ended')
+
+        # Optimize surrogate L with respect to theta with K epochs and minibatch size M <= NT
+        for i in range(SGD_EPOCH):
+
+            L = -clipped_surrogate(policy=policy, old_probs=action_prob_history,
+                                   states=state_history, actions=action_history,
+                                   rewards=reward_history, discount=DISCOUNT_RATE,
+                                   epsilon=epsilon, beta=beta)
+
+            optimizer.zero_grad()
+            L.backward()
+            optimizer.step()
+            del L
+            # print(f'Episode: {episode}\tEpoch: {i+1}')
+
+        # Reduce clipping parameter and entropy regularization coefficient as time goes on
+        epsilon *= EPSILON_DECAY
+        beta *= BETA_DECAY
+
+        rewards.append(total_rewards)
+
+        if episode % EPISODE_MONITOR == 0:
+            print(f'Episode: {episode:d}\t Score: {np.mean(rewards[-100:]):.1f}')
 
 
 if __name__ == '__main__':
