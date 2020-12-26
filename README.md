@@ -16,6 +16,10 @@ This is an repository of reinforcement learning that I'm currently working on.
 
 ![video_01](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/space_invaders_duel_eps4500_short.gif)
 
+* Proximal policy optimization in Atari Pong
+
+![image_06](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/ppo_pong_score.png)
+
 * Lunar lander continuous environment by using Deep Deterministic Policy Gradient. (Fail)
 
 ![video_05](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/llc_ddpg.gif)
@@ -43,7 +47,9 @@ This is an repository of reinforcement learning that I'm currently working on.
 ## Algorithm
 
 * Deep Q Network (DQN)
+* Double learning
 * Dueling architecture
+* Proximal policy optimization (PPO)
 * Asynchronous Advantage Actor Critic (A3C)
 * Prioritized experience replay (PER)
 * Deep Deterministic Policy Gradient (DDPG)
@@ -53,6 +59,7 @@ This is an repository of reinforcement learning that I'm currently working on.
 * OpenAI Gym
   * Space invaders
   * Lunar lander discrete/continous
+  * Pong
   * Cartpole
   * Mountain car
 
@@ -60,7 +67,8 @@ This is an repository of reinforcement learning that I'm currently working on.
 
 * OS: Ubuntu 20.04
 * GPU: NVIDIA GeForce RTX 2070
-* TensorFlow and PyTorch
+* Laptop: System76 Oryx Pro
+* Neural network: TensorFlow and PyTorch
 * Google Colab
 * AWS EC2 Ubuntu 18.04 g4dn.xlarge 1GPU
 * AWS Deep Learning AMI 1GPU
