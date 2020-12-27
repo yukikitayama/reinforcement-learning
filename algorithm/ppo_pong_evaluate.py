@@ -11,8 +11,8 @@ from algorithm.ppo_pong import Policy, PPOAgent
 # Parameter
 ENV = 'PongDeterministic-v4'
 MODEL = '../model/ppo_pong.pth'
-VIDEO = '../video/ppo_pong.gif'
-# VIDEO = '../video/ppo_pong.mp4'
+# VIDEO = '../video/ppo_pong.gif'
+VIDEO = '../video/ppo_pong.mp4'
 SCORE = '../object/ppo_pong_score.pkl'
 SAVEFIG_01 = '../image/ppo_pong_score.png'
 SAVEFIG_02 = '../image/ppo_pong_time.png'
@@ -73,7 +73,11 @@ def visualize_all(data_list, name_list, color_list, ma, savefig):
 
 def evaluation(agent, episode, max_step):
 
-    with imageio.get_writer(VIDEO, fps=FPS) as video:
+    # gif
+    # with imageio.get_writer(VIDEO, fps=FPS) as video:
+
+    # mp4
+    with imageio.get_writer(VIDEO, format='FFMPEG', fps=FPS, macro_block_size=None) as video:
 
         for i in range(episode):
 
