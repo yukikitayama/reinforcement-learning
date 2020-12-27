@@ -18,7 +18,9 @@ This is an repository of reinforcement learning that I'm currently working on.
 
 * Proximal policy optimization in Atari Pong
 
-![image_06](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/ppo_pong_score.png)
+![video_07](https://github.com/yukikitayama/reinforcement-learning/blob/master/video/ppo_pong.gif)
+
+![image_06](https://github.com/yukikitayama/reinforcement-learning/blob/master/image/ppo_pong_all.png)
 
 * Lunar lander continuous environment by using Deep Deterministic Policy Gradient. (Fail)
 
