@@ -1,95 +1,50 @@
+"""
+Atari Pong
+- When a ball pass our area, agent receive -1.0 as losing a point. Usually, every time step, agent receives 0.0 reward.
+"""
+
 import gym
-import matplotlib.pyplot as plt
-import numpy as np
+
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
-import random
-import time
+import torch.optim as optim
+from torch.distributions import Categorical
 
-# import pong_utils
+import numpy as np
+
+import random
+from collections import deque
+import pickle
+
 
 # Parameter
-ENV = 'PongDeterministic-v4'
+# EPISODE = 3000
+# EPISODE = 100
+EPISODE = 1000
+K = 5
+# MINIBATCH = 1000
+MINIBATCH = 500
+GAMMA = 0.99
+# GAMMA = 0.999
+# GAMMA = 0.9995
+EPSILON = 0.1
+MAXLEN = 100
+LR = 1e-3
+# LR = 1e-4
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print('device', device)
-RIGHT = 4
-LEFT = 5
-NUM_ACTION = 6
-
-# DISCOUNT_RATE = 0.99
-DISCOUNT_RATE = 0.995
-# EPSILON = 0.1
-EPSILON = 0.2  # Epsilon of clipped surrogate function to clip the ratio of current prob divided by old prob
-EPSILON_DECAY = 0.999
-BETA = 0.01  # c2 coefficient for entropy bonus
-BETA_DECAY = 0.995
-TMAX = 320
-SGD_EPOCH = 4
-EPISODE = 10000
-EPISODE_MONITOR = 100
-LR = 1e-4
+# ENV = 'PongNoFrameskip-v4'
+ENV = 'PongDeterministic-v4'
 SEED = 0
-
-
-def preprocess_single(image, bkg_color=np.array([144, 72, 17])):
-    img = np.mean(image[34:-16:2, ::2] - bkg_color, axis=-1) / 255.
-    return img
-
-
-def states_to_prob(policy, states):
-    states = torch.stack(states)
-    policy_input = states.view(-1, *states.shape[-3:])
-    return policy(policy_input).view(states.shape[:-3])
-
-
-def view_environment(env):
-    env.reset()
-    _, _, _, _ = env.step(0)
-    for _ in range(20):
-        frame, _, _, _ = env.step(1)
-
-    plt.subplot(1, 2, 1)
-    plt.imshow(frame)
-    plt.title('Original image')
-
-    plt.subplot(1, 2, 2)
-    plt.title('Preprocessed image')
-    plt.imshow(preprocess_single(frame), cmap='Greys')
-    plt.show()
-
-    print('Shape of preprocessed frame', preprocess_single(frame).shape)
-
-
-class PolicyTNakae(nn.Module):
-    def __init__(self):
-        super(PolicyTNakae, self).__init__()
-        # https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
-        # (80 + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1 = 78 / 2 + 1 = 39 + 1 = 40
-        self.conv1 = nn.Conv2d(in_channels=2, out_channels=4, kernel_size=2, stride=2)
-        # (40 + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1 = 38 / 2 + 1 = 20
-        self.conv2 = nn.Conv2d(in_channels=4, out_channels=8, kernel_size=2, stride=2)
-        # (20 + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1 = 18 / 2 + 1 = 10
-        self.conv3 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=2, stride=2)
-        # (10 + 2 * 0 - 1 * (2 - 1) - 1) / 2 + 1 = 8 / 2 + 1 = 5
-        self.conv4 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=2, stride=2)
-        self.size = 32 * 5 * 5
-        self.fc1 = nn.Linear(self.size, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 1)
-        self.sig = nn.Sigmoid()
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = x.view(-1, self.size)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.sig(self.fc3(x))
-        return x
+# Actions ['NOOP', 'FIRE', 'RIGHT', 'LEFT', 'RIGHTFIRE', 'LEFTFIRE']
+RIGHT = 4  # RIGHTFIRE
+LEFT = 5  # LEFTFIRE
+NRAND = 5
+SCORE = '../object/ppo_pong_score.pkl'
+MODEL = '../model/ppo_pong.pth'
+TIME = '../object/ppo_pong_time.pkl'
+LOSS = '../object/ppo_pong_loss.pkl'
 
 
 class Policy(nn.Module):
@@ -107,201 +62,224 @@ class Policy(nn.Module):
         self.conv2 = nn.Conv2d(in_channels=4, out_channels=16, kernel_size=6, stride=4)
         self.size = 9 * 9 * 16
         self.fc1 = nn.Linear(self.size, 256)
-        self.fc2 = nn.Linear(256, 1)
-        self.sig = nn.Sigmoid()
+        self.fc2 = nn.Linear(256, 2)
+
+        self.layers = nn.Sequential(
+            nn.Linear(6000 * 2, 512),
+            nn.ReLU(),
+            nn.Linear(512, 2),
+        )
+
+    # def forward(self, x):
+    #     x = F.relu(self.conv1(x))
+    #     x = F.relu(self.conv2(x))
+    #     x = x.view(-1, self.size)
+    #     x = F.relu(self.fc1(x))
+    #     logits = self.fc2(x)
+    #     return logits
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = x.view(-1, self.size)
-        x = F.relu(self.fc1(x))
-        return self.sig(self.fc2(x))
+        return self.layers(x)
 
 
-def clipped_surrogate(policy, old_probs, states, actions, rewards,
-                      discount=0.995, epsilon=0.1, beta=0.01):
-    """
-    Clipped surrogate function.
-    """
-    # List of discount factors to the power of t
-    # First element is gamma^0, followed by gamma^1, gamma^2, and so on
-    discount = discount ** np.arange(len(rewards))
-    # np.newaxis is used to increase dimension
-    # rewards shape becomes (len(discount), len(rewards))
-    # First row has rewards each multiplied by discount * gamma^0,
-    # second row also has reward each multiplied by discount * gamma^1, and third by discount * gamma^2
-    rewards = np.asarray(rewards) * discount[:, np.newaxis]
+class PPOAgent:
+    def __init__(self, env, policy, gamma, epsilon, device, nrand):
+        self.env = env
+        self.policy = policy
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.device = device
+        self.nrand = nrand
 
-    # Sum of discounted future rewards for each reward and for each time step
-    # rewards_future shape has (len(rewards), len(rewards))
-    rewards_future = rewards[::-1].cumsum(axis=0)[::-1]
+    def preprocess_batch(self, images, bkg_color=np.array([144, 72, 17])):
+        """
+        Returns batch data which has shape (1, 2, 80, 80).
+        """
+        list_of_images = np.asarray(images)
 
-    mean = np.mean(rewards_future, axis=1)
-    # Avoid zero division
-    std = np.std(rewards_future, axis=1) + 1.0e-10
+        if len(list_of_images.shape) < 5:
+            list_of_images = np.expand_dims(list_of_images, 1)
 
-    # mean[:, np.newaxis] shape has (len(rewards_future), 1) from mean shape (len(rewards_future), )
-    rewards_normalized = (rewards_future - mean[:, np.newaxis]) / std[:, np.newaxis]
+        list_of_images_prepro = np.mean(list_of_images[:, :, 34:-16:2, ::2] - bkg_color,
+                                        axis=-1) / 255.0
 
-    actions = torch.tensor(actions, dtype=torch.int8, device=device)
-    rewards = torch.tensor(rewards, dtype=torch.float, device=device)
-    old_probs = torch.tensor(old_probs, dtype=torch.float, device=device)
+        batch_input = np.swapaxes(list_of_images_prepro, 0, 1)
+        # Send input data to device to be in the same location as policy
+        return torch.from_numpy(batch_input).float().to(self.device)
 
-    new_probs = states_to_prob(policy, states)
-    new_probs = torch.where(actions == RIGHT, new_probs, 1.0 - new_probs)
+    def state_to_tensor(self, I):
+        """ prepro 210x160x3 uint8 frame into 6000 (75x80) 1D float vector """
+        if I is None:
+            return torch.zeros(1, 6000)
+        I = I[
+            35:185]  # crop - remove 35px from start & 25px from end of image in x, to reduce redundant parts of image (i.e. after ball passes paddle)
+        I = I[::2, ::2, 0]  # downsample by factor of 2.
+        I[I == 144] = 0  # erase background (background type 1)
+        I[I == 109] = 0  # erase background (background type 2)
+        I[I != 0] = 1  # everything else (paddles, ball) just set to 1. this makes the image grayscale effectively
+        return torch.from_numpy(I.astype(np.float32).ravel()).unsqueeze(0).to(self.device)
 
-    # Probability ratio
-    ratio = new_probs / old_probs
+    def pre_process(self, x, prev_x):
+        # return self.state_to_tensor(x) - self.state_to_tensor(prev_x)
+        return torch.cat([self.state_to_tensor(x), self.state_to_tensor(prev_x)], dim=1)
 
-    # Clipped ratio
-    clipped_ratio = torch.clamp(ratio, min=1 - epsilon, max=1 + epsilon)
+    def play(self):
+        return None
 
-    # Clipped surrogate objective
-    # (7) of proximal policy optimization algorithms paper
-    clipped_surrogate_objective = torch.min(ratio * rewards, clipped_ratio * rewards)
+    def sample_minibatch(self, m, state_list, action_list, action_prob_list, reward_list):
+        idxs = random.sample(range(len(action_list)), m)
+        state_batch = torch.cat([state_list[idx] for idx in idxs], dim=0)
+        # https://pytorch.org/docs/stable/tensors.html
+        action_batch = torch.tensor(data=[action_list[idx] for idx in idxs], dtype=torch.int64, device=self.device)
+        action_prob_batch = torch.tensor(data=[action_prob_list[idx] for idx in idxs], dtype=torch.float, device=self.device)
+        reward_batch = torch.tensor(data=[reward_list.cpu().numpy()[idx] for idx in idxs], dtype=torch.float, device=self.device)
+        return state_batch, action_batch, action_prob_batch, reward_batch
 
-    # An entropy regularization term, which steers new_policy towards 0.5
-    # The form for a binary prediction
-    # Adding 1.e-10 to avoid log(0) which gives nan
-    entropy = -(new_probs * torch.log(old_probs + 1.e-10) +
-                (1.0 - new_probs) * (torch.log(1.0 - old_probs + 1.e-10)))
+    def clipped_surrogate(self, minibatch):
+        state_batch, action_batch, action_prob_batch, reward_batch = minibatch
 
-    return torch.mean(clipped_surrogate_objective + beta * entropy)
+        # Get logits from policy
+        new_logits = self.policy(state_batch)
 
+        # Get probability of each state and each action
+        new_probs = F.softmax(new_logits, dim=1)
 
-def test_clipped_surrogate():
-    rewards = [1, 1, 10]
-    discount = 0.995
-    discount = discount ** np.arange(len(rewards))
-    print('discount\n', discount)
-    rewards = np.asarray(rewards) * discount[:, np.newaxis]
-    print('rewards\n', rewards, rewards.shape)
-    print('rewards[::-1]\n', rewards[::-1])
-    print('rewards[::-1].cumsum(axis=0)\n', rewards[::-1].cumsum(axis=0))
-    rewards_future = rewards[::-1].cumsum(axis=0)[::-1]
-    print('rewards_future\n', rewards_future, rewards_future.shape)
+        # Action index [4, 5] to probability tensor index [0, 1]
+        action_batch = self.convert_action_for_prob(action_batch)
 
-    mean = np.mean(rewards_future, axis=1)
-    # Avoid zero division
-    std = np.std(rewards_future, axis=1) + 1.0e-10
-    print('mean\n', mean, mean.shape)
-    print('mean[:, np.newaxis]\n', mean[:, np.newaxis], mean[:, np.newaxis].shape)
-    rewards_normalized = (rewards_future - mean[:, np.newaxis]) / std[:, np.newaxis]
-    print('rewards_normalized\n', rewards_normalized, rewards_normalized.shape)
+        # unsqueeze(input, dim, index) returns a new tensor with a new size one dimension inserted at dim
+        new_probs = new_probs.gather(dim=1, index=action_batch.unsqueeze(1)).squeeze()
 
+        # Probability ratio
+        ratio = new_probs / action_prob_batch
 
-def collect_trajectories(env, policy, tmax, nrand=5):
-    n = 1
+        # Clipped ratio
+        clipped_ratio = torch.clamp(ratio, min=(1 - self.epsilon), max=(1 + self.epsilon))
 
-    state_list = []
-    reward_list = []
-    prob_list = []
-    action_list = []
+        # Clipped surrogate objective
+        # (7) of proximal policy optimization algorithms paper
+        clipped_surrogate_objective = torch.min(ratio * reward_batch,
+                                                clipped_ratio * reward_batch)
 
-    # Perform nrand random steps
-    for _ in range(nrand):
-        fr1, re1, _, _ = env.step(np.random.choice([RIGHT, LEFT], n))
-        fr2, re2, _, _ = env.step(0 * n)
+        loss = torch.mean(clipped_surrogate_objective)
 
-    for t in range(tmax):
+        return loss
 
-        batch_input = preprocess_batch([fr1, fr2])
+    def random_beginning(self):
+        self.env.reset()
+        for _ in range(self.nrand):
+            state1, reward1, _, _ = self.env.step(np.random.choice([RIGHT, LEFT]))
+            state2, reward2, _, _ = self.env.step(0)
+        return state1, state2
 
-        probs = policy(batch_input).squeeze().cpu().detach().numpy()
+    def convert_action_for_env(self, action):
+        return action + 4
 
-        action = np.where(np.random.rand(n) < probs, RIGHT, LEFT)
+    def convert_action_for_prob(self, action):
+        return action - 4
 
-        probs = np.where(action == RIGHT, probs, 1.0 - probs)
+    def collect_trajectory(self):
+        state_list = []
+        action_list = []
+        action_prob_list = []
+        reward_list = []
+        t = 0
 
-        # Continue game. 0 is do nothing
-        fr1, re1, is_done, _ = env.step(action)
-        fr2, re2, is_done, _ = env.step(0 * n)
+        state1, state2 = self.random_beginning()
 
-        reward = re1 + re2
+        while True:
 
-        # Store the result
-        state_list.append(batch_input)
-        reward_list.append(reward)
-        prob_list.append(probs)
-        action_list.append(action)
+            t += 1
 
-        # Stop if any of the trajectories is done True
-        if is_done.any():
-            break
+            # batch_input = self.preprocess_batch([state1, state2])
+            batch_input = self.pre_process(state1, state2)
 
-    return prob_list, state_list, action_list, reward_list
+            with torch.no_grad():
+                # action, action_prob = self.policy(batch_input)
+                logits = self.policy(batch_input)
+                m = Categorical(logits=logits)
+                action = int(m.sample().cpu().numpy()[0])
+                action_prob = float(m.probs[0, action].detach().cpu().numpy())
 
+            # print('action', action)
+            # print('logits', logits)
+            # print('m.probs', m.probs[0, :])
 
-def preprocess_batch(images, bkg_color=np.array([144, 72, 17])):
-    """
-    Returns batch data which has shape (1, 2, 80, 80).
-    """
-    list_of_images = np.asarray(images)
+            # Action is 0 or 1, but we want 4 or 5
+            action = self.convert_action_for_env(action)
 
-    if len(list_of_images.shape) < 5:
-        list_of_images = np.expand_dims(list_of_images, 1)
+            state1 = state2
+            state2, reward, done, _ = self.env.step(action)
 
-    list_of_images_prepro = np.mean(list_of_images[:, :, 34:-16:2, ::2] - bkg_color,
-                                    axis=-1) / 255.0
+            state_list.append(batch_input)
+            action_list.append(action)
+            action_prob_list.append(action_prob)
+            reward_list.append(reward)
 
-    batch_input = np.swapaxes(list_of_images_prepro, 0, 1)
-    return torch.from_numpy(batch_input).float().to(device)
+            if done:
+                print('Last probability', m.probs[0, :], 'time step', t)
+                break
 
+        return state_list, action_list, action_prob_list, reward_list, t
 
-def test_preprocess_batch(env):
-    env.reset()
-    fr1, _, _, _ = env.step(0)
-    fr2, _, _, _ = env.step(0)
-    batch_input = preprocess_batch([fr1, fr2])
-    print(batch_input.size())
+    def normalize_reward(self, reward_list):
+        R = 0
+        discounted_rewards = []
 
+        #    [t0, t1, t2, t3]
+        # -> [t3, t2, t1, t0]
+        # -> [t3 + (0.99 * 0),
+        #     t2 + (0.99 * (t3 + (0.99 * 0))),
+        #     t1 + (0.99 * (t2 + (0.99 * (t3 + (0.99 * 0)))))]
+        for r in reward_list[::-1]:
+            if r != 0:
+                R = 0  # scored/lost a point in pong, so reset reward sum?
+            R = r + self.gamma * R
+            discounted_rewards.insert(0, R)
 
-def play(env, policy, total_time=2000, preprocess=None, nrand=5):
-    env.reset()
+        # Rewards normalization because the distribution of rewards shifts as learning happens.
+        # Then, learning can be improved if we normalize the rewards
+        discounted_rewards = torch.tensor(data=discounted_rewards, dtype=torch.float, device=self.device)
+        discounted_rewards = (discounted_rewards - discounted_rewards.mean()) / (discounted_rewards.std() + 1.0e-10)
+        return discounted_rewards
 
-    env.render()
-
-    env.step(1)
-
-    # Random steps in the beginning
-    for _ in range(nrand):
-
-        env.render()
-
-        fr1, re1, is_done, _ = env.step(np.random.choice([RIGHT, LEFT]))
-        fr2, re2, is_done, _ = env.step(0)
-
-    # Store frames in each time step
-    anim_frames = []
-
-    for _ in range(total_time):
-
-        env.render()
-        time.sleep(0.05)
-
-        frame_input = preprocess_batch([fr1, fr2])
-        prob = policy(frame_input)
-
-        # RIGHT = 4, LEFT = 5
-        action = RIGHT if random.random() < prob else LEFT
-        fr1, _, is_done, _ = env.step(action)
-        fr2, _, is_done, _ = env.step(0)
-
-        if preprocess is None:
-            anim_frames.append(fr1)
-        else:
-            anim_frames.append(preprocess(fr1))
-
-        if is_done:
-            break
-
-    env.close()
+    def test_agent(self):
+        state1, state2 = self.random_beginning()
+        batch_input = self.preprocess_batch([state1, state2])
+        # print(batch_input.size())
+        # print('(action, action probability)')
+        # print(agent.policy(batch_input))
+        trajectory = self.collect_trajectory()
+        # print('Length of state_list', len(trajectory[0]),
+        #       'Length of action_list', len(trajectory[1]),
+        #       'Size of the first element of state_list', trajectory[0][0].size())
+        # print('Check rewards')
+        # for r in trajectory[3]:
+        #     print(r)
+        rewards = self.normalize_reward(trajectory[3])
+        # print(rewards.size(), rewards.type(), rewards.dtype)
+        # for r, nr in zip(trajectory[3], rewards):
+        #     print(r, nr)
+        minibatch = self.sample_minibatch(
+            m=MINIBATCH, state_list=trajectory[0], action_list=trajectory[1],
+            action_prob_list=trajectory[2], reward_list=rewards
+        )
+        # print(f'State minibatch size and type: {minibatch[0].size()}, {minibatch[0].type()}\n',
+        #       f'Action minibatch size and type: {minibatch[1].size()}, {minibatch[1].type()}\n',
+        #       f'Action prob minibatch size and type: {minibatch[2].size()}, {minibatch[2].type()}\n',
+        #       f'Reward minibatch size and type: {minibatch[3].size()}, {minibatch[3].type()}')
+        # new_probs = agent.states_to_prob(states=minibatch[0])
+        # print('new_probs size', new_probs.size())
+        # print(new_probs)
+        new_probs = self.clipped_surrogate(minibatch)
+        # print(new_probs.size())
+        print(new_probs)
 
 
 def main():
+
+    # Environment
     env = gym.make(ENV)
-    print('Environment', env)
-    print('List of available actions:', env.unwrapped.get_action_meanings())
 
     # Seed
     env.seed(SEED)
@@ -309,95 +287,84 @@ def main():
     np.random.seed(SEED)
     random.seed(SEED)
 
-    # View environment
-    # view_environment(env)
-
-    # Test clipped_surrogate
-    # test_clipped_surrogate()
-
-    # Test preprocess_batch
-    # test_preprocess_batch(env)
-
     # Policy
+    # Send weight to device to be in the same location as input data
     policy = Policy().to(device)
 
     # Optimizer
-    optimizer = optim.Adam(policy.parameters(), lr=LR)
+    # optimizer = optim.Adam(policy.parameters(), lr=LR)
 
-    # Random play
-    # play(env, policy, total_time=200, preprocess=None, nrand=5)
+    # Agent
+    agent = PPOAgent(env=env, policy=policy, gamma=GAMMA, epsilon=EPSILON,
+                     device=device, nrand=NRAND)
+
+    # Optimizer
+    optimizer = optim.Adam(agent.policy.parameters(), lr=LR)
+
+    # Test
+    # agent.test_agent()
 
     # Initialization for training
-    epsilon = EPSILON
-    beta = BETA
-    rewards = []
+    total_rewards = []
+    total_rewards_for_average = deque(maxlen=MAXLEN)
+    time_steps = []
+    losses = []
 
     # Training
-    for episode in range(EPISODE):
+    for iteration in range(EPISODE):
 
-        # Initialization for each episode
-        state_history = []
-        action_history = []
-        action_prob_history = []
-        reward_history = []
-        env.reset()
-        total_rewards = 0
+        # Trajectory
+        trajectory = agent.collect_trajectory()
 
-        # Random steps in the beginning
-        for _ in range(5):
-            state1, reward1, is_done, _ = env.step(np.random.choice([RIGHT, LEFT]))
-            state2, reward2, is_done, _ = env.step(0)
+        # Total rewards
+        total_reward = sum(trajectory[3])
+        total_rewards.append(total_reward)
+        total_rewards_for_average.append(total_reward)
 
-        for t in range(100000):
+        # Total time steps
+        time_steps.append(trajectory[4])
 
-            # Preprocess for policy
-            batch_input = preprocess_batch([state1, state2])
+        # Normalize rewards
+        normalized_rewards = agent.normalize_reward(trajectory[3])
 
-            # Get action probability and the action
-            probs = policy(batch_input).squeeze().cpu().detach().numpy()
-            action = np.where(np.random.rand(1) < probs, RIGHT, LEFT)
-            probs = np.where(action == RIGHT, probs, 1.0 - probs)
+        # Optimize surrogate L wrt theta, with K epochs and minibatch size M <= NT
+        for _ in range(K):
 
-            # Advance the game
-            state1, reward1, done, _ = env.step(action)
-            state2, reward2, done, _ = env.step(0)  # 0 is no action
+            mini_batch = agent.sample_minibatch(
+                m=MINIBATCH, state_list=trajectory[0], action_list=trajectory[1],
+                action_prob_list=trajectory[2], reward_list=normalized_rewards
+            )
 
-            reward = reward1 + reward2
-
-            # Store experience
-            state_history.append(batch_input)
-            action_history.append(action)
-            reward_history.append(reward)
-            action_prob_history.append(probs)
-
-            if done:
-                total_rewards = sum(reward_history)
-                break
-
-        # print(f'Episode: {episode}\tTrajectory ended')
-
-        # Optimize surrogate L with respect to theta with K epochs and minibatch size M <= NT
-        for i in range(SGD_EPOCH):
-
-            L = -clipped_surrogate(policy=policy, old_probs=action_prob_history,
-                                   states=state_history, actions=action_history,
-                                   rewards=reward_history, discount=DISCOUNT_RATE,
-                                   epsilon=epsilon, beta=beta)
+            # Do not forget - to go gradient ascent
+            loss = -agent.clipped_surrogate(mini_batch)
 
             optimizer.zero_grad()
-            L.backward()
+            loss.backward()
             optimizer.step()
-            del L
-            # print(f'Episode: {episode}\tEpoch: {i+1}')
 
-        # Reduce clipping parameter and entropy regularization coefficient as time goes on
-        epsilon *= EPSILON_DECAY
-        beta *= BETA_DECAY
+            print(f'Iteration: {iteration:d}\tLoss: {loss:.3f}')
 
-        rewards.append(total_rewards)
+        losses.append(loss)
 
-        if episode % EPISODE_MONITOR == 0:
-            print(f'Episode: {episode:d}\t Score: {np.mean(rewards[-100:]):.1f}')
+        print(f'Iteration: {iteration:d}\t'
+              f'Last total reward: {total_rewards[-1]:.1f}\t'
+              f'MA reward: {np.mean(total_rewards_for_average):.3f}')
+
+    # Save score
+    pickle.dump(total_rewards, open(SCORE, 'wb'))
+    print('Saved score')
+
+    # Save model
+    torch.save(agent.policy.state_dict(), MODEL)
+    print('Saved model')
+
+    # Save time steps
+    pickle.dump(time_steps, open(TIME, 'wb'))
+    print('Saved time steps')
+
+    # Saved loss
+    pickle.dump(losses, open(LOSS, 'wb'))
+    print('Saved loss')
 
 
 if __name__ == '__main__':

@@ -1,121 +1,106 @@
 import gym
 import torch
-import torch.nn as nn
+from torch.distributions import Categorical
 import pandas as pd
 import matplotlib.pyplot as plt
-import pickle
 import imageio
-
-import gym
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.distributions import Categorical
-
-import numpy as np
-
-import random
-from collections import deque
 import pickle
-
+# User defined
+from algorithm.ppo_pong import Policy, PPOAgent
 
 # Parameter
-ENV = 'PongNoFrameskip-v4'
+ENV = 'PongDeterministic-v4'
 MODEL = '../model/ppo_pong.pth'
 VIDEO = '../video/ppo_pong.gif'
 # VIDEO = '../video/ppo_pong.mp4'
 SCORE = '../object/ppo_pong_score.pkl'
-SAVEFIG = '../image/ppo_pong_score.png'
+SAVEFIG_01 = '../image/ppo_pong_score.png'
+SAVEFIG_02 = '../image/ppo_pong_time.png'
+SAVEFIG_03 = '../image/ppo_pong_loss.png'
+SAVEFIG_04 = '../image/ppo_pong_all.png'
+TIME = '../object/ppo_pong_time.pkl'
+LOSS = '../object/ppo_pong_loss.pkl'
 EPISODE = 3
 MAX_STEP = 10000
 FPS = 30
 SEED = 0
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# print('device', device)
 RIGHT = 4
 LEFT = 5
-MINIBATCH = 1000
 
 
-class Policy(nn.Module):
-    """
-    This outputs the probability of moving right, so P(left) = 1 - P(right)
-    """
-    def __init__(self):
-        super(Policy, self).__init__()
-        # in_channels=2 is because of 2 stacked frames
-        # (80 + 2 * 0 - 1 * (6 - 1) - 1) / 2 + 1 = (80 - 6) / 2 + 1 = 74 / 2 + 1 = 38
-        # 80 * 80 * 2 to 38 * 38 * 4
-        self.conv1 = nn.Conv2d(in_channels=2, out_channels=4, kernel_size=6, stride=2, bias=False)
-        # (38 + 2 * 0 - 1 * (6 - 1) - 1) / 4 + 1 = (38 - 6) / 4 + 1 = 32 / 4 + 1 = 9
-        # 38 * 38 * 4 to 9 * 9 * 16
-        self.conv2 = nn.Conv2d(in_channels=4, out_channels=16, kernel_size=6, stride=4)
-        self.size = 9 * 9 * 16
-        self.fc1 = nn.Linear(self.size, 256)
-        self.fc2 = nn.Linear(256, 2)
-
-        self.layers = nn.Sequential(
-            nn.Linear(6000 * 2, 512),
-            nn.ReLU(),
-            nn.Linear(512, 2),
-        )
-
-    # def forward(self, x):
-    #     x = F.relu(self.conv1(x))
-    #     x = F.relu(self.conv2(x))
-    #     x = x.view(-1, self.size)
-    #     x = F.relu(self.fc1(x))
-    #     logits = self.fc2(x)
-    #     return logits
-
-    def forward(self, x):
-        return self.layers(x)
-
-
-def visualize_score(score, ma):
-    ma_score = pd.Series(score).rolling(ma).mean()
-    upper = pd.Series(score).rolling(ma).quantile(0.9, interpolation='linear')
-    lower = pd.Series(score).rolling(ma).quantile(0.1, interpolation='linear')
-    plt.plot(ma_score)
+def visualize_result(data, ma, ylabel, savefig):
+    ma_data = pd.Series(data).rolling(ma).mean()
+    upper = pd.Series(data).rolling(ma).quantile(0.9, interpolation='linear')
+    lower = pd.Series(data).rolling(ma).quantile(0.1, interpolation='linear')
+    plt.plot(ma_data)
     plt.fill_between(x=range(len(upper)),
                      y1=upper,
                      y2=lower,
                      alpha=0.3)
     plt.title(f'Proximal Policy Optimization Pong\n'
-              f'{ma}-episode moving average of scores')
+              f'{ma}-episode moving average of {ylabel.lower()}')
     plt.xlabel('Episode')
-    plt.ylabel('Score')
+    plt.ylabel(ylabel)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(SAVEFIG)
+    plt.savefig(savefig)
     plt.show()
 
 
-def evaluation(env, agent):
+def visualize_all(data_list, name_list, color_list, ma, savefig):
+    plt.suptitle('Proximal Policy Optimization Pong\n100-episode moving averages')
+    for i, data in enumerate(data_list):
+
+        ma_data = pd.Series(data).rolling(ma).mean()
+        upper = pd.Series(data).rolling(ma).quantile(0.9, interpolation='linear')
+        lower = pd.Series(data).rolling(ma).quantile(0.1, interpolation='linear')
+
+        plt.subplot(len(data_list), 1, i+1)
+        plt.plot(ma_data, color=color_list[i])
+        plt.fill_between(x=range(len(upper)), y1=upper, y2=lower, alpha=0.3, color=color_list[i])
+        plt.ylabel(name_list[i])
+        plt.grid()
+
+        if i == 2:
+            plt.xlabel('Episode')
+
+    plt.tight_layout()
+    plt.savefig(savefig)
+    plt.show()
+
+
+def evaluation(agent, episode, max_step):
 
     with imageio.get_writer(VIDEO, fps=FPS) as video:
 
-        for i in range(EPISODE):
+        for i in range(episode):
 
-            # Initialize
-            state = env.reset()
-            screen = env.render(mode='rgb_array')
-            video.append_data(screen)
+            state1, state2 = agent.random_beginning()
 
             # Start episode
-            for j in range(MAX_STEP):
+            for j in range(max_step):
 
-                action = agent.act(state)
-                state, reward, done, _ = env.step(action)
+                batch_input = agent.pre_process(state1, state2)
 
-                screen = env.render(mode='rgb_array')
+                with torch.no_grad():
+                    logits = agent.policy(batch_input)
+
+                m = Categorical(logits=logits)
+                action = int(m.sample().cpu().numpy()[0])
+                action = agent.convert_action_for_env(action)
+
+                state1 = state2
+                state2, reward, done, _ = agent.env.step(action)
+
+                screen = agent.env.render(mode='rgb_array')
                 video.append_data(screen)
 
                 if done:
                     break
 
-        env.close()
+        agent.env.close()
 
     print('Saved video')
 
@@ -125,18 +110,33 @@ def main():
     env = gym.make(ENV)
     env.seed(SEED)
 
-    # Score result
-    score = pickle.load(open(SCORE, 'rb'))
-
     # Visualize score
-    visualize_score(score=score, ma=100)
+    score = pickle.load(open(SCORE, 'rb'))
+    # visualize_result(data=score, ma=100, ylabel='Score', savefig=SAVEFIG_01)
+
+    # Visualize time step
+    timesteps = pickle.load(open(TIME, 'rb'))
+    # visualize_result(data=timesteps, ma=100, ylabel='Time steps', savefig=SAVEFIG_02)
+
+    # Visualize loss
+    losses = pickle.load(open(LOSS, 'rb'))
+    # visualize_result(data=losses, ma=100, ylabel='Loss', savefig=SAVEFIG_03)
+
+    # Visualize all
+    data_list = [score, timesteps, losses]
+    name_list = ['Score', 'Time step', 'Loss']
+    color_list = ['#1f77b4', '#ff7f0e', '#2ca02c']
+    # visualize_all(data_list=data_list, name_list=name_list, color_list=color_list, ma=100, savefig=SAVEFIG_04)
 
     # Load trained network
-    policy = Policy()
-    # policy.load_state_dict(torch.load(MODEL, map_location=device))
+    policy = Policy().to(device)
+    policy.load_state_dict(torch.load(MODEL, map_location=device))
+
+    # Agent
+    agent = PPOAgent(env=env, policy=policy, gamma=0.99, epsilon=0.1, device=device, nrand=5)
 
     # Make evaluation video
-    # evaluation(env=env, agent=agent)
+    evaluation(agent=agent, episode=5, max_step=300)
 
 
 if __name__ == '__main__':
