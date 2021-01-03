@@ -42,35 +42,42 @@ import numpy as np
 from collections import deque, namedtuple
 import random
 import time
+import pickle
 
-# Parameter
-EPISODE = 1
-LR = 1e-3
-TAU = 1e-3
-DELAY_TRAINING = 100
-GAMMA = 0.99
-MAXLEN = 100
 ENV = 'SpaceInvaders-v0'
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'device: {device}')
 PrioritizedExperience = namedtuple('Experience',
                                    ['state', 'action', 'reward', 'next_state', 'done', 'priority', 'index'])
 
+# Parameter
+
 # Deep Q Network
+EPISODE = 10000
+EPSILON_DECAY_RATE = 0.99999
+STACK_FRAME = 3
+# LR = 1e-3
+LR = 1e-4
+RENDER = True
+TAU = 1e-3
+DELAY_TRAINING = 1000
+GAMMA = 0.99
 EPSILON_START = 1.0
 EPSILON_MIN = 0.1
 EPSILON_DECAY_STEP = 20000
-EPSILON_DECAY_RATE = 0.999
-MAX_SAMPLE = 10000
+# BATCH_SIZE = 32
 BATCH_SIZE = 64
+MAXLEN = 100
+SCORE = '../object/duel_ddqn_per_space_invaders_score.pkl'
+MODEL = '../model/duel_ddqn_per_space_invaders_target_model.pth'
 
 # experience replay
+MEMORY_SIZE = 100000
+BETA_RATE_PER = 0.9999999
 ALPHA_PER = 0.6
 BETA_PER = 0.4
 EPSILON_PER = 0.01
 # EPSILON_PER = 1e-6
-CAPACITY = 10
-MEMORY_SIZE = 10
 
 
 class SumTree:
@@ -135,7 +142,6 @@ class SumTree:
         """
         # If this index is not in pending_idx?
         if index not in self.pending_idx:
-            print('here')
             return
         self.pending_idx.remove(index)
         change = priority - self.tree[index]
@@ -188,17 +194,17 @@ class SumTree:
 
 
 class PrioritizedReplay:
-    def __init__(self, capacity, memory_size,
-                 alpha_per=ALPHA_PER, beta_per=BETA_PER, epsilon_per=EPSILON_PER,
-                 max_sample=MAX_SAMPLE, batch_size=BATCH_SIZE,
-                 history_length=2):
+    def __init__(self, memory_size,
+                 alpha_per=ALPHA_PER, beta_per=BETA_PER, beta_rate_per=BETA_RATE_PER,
+                 epsilon_per=EPSILON_PER,
+                 batch_size=BATCH_SIZE,
+                 history_length=STACK_FRAME):
         self.memory_size = memory_size
-        self.tree = SumTree(capacity)
-        self.capacity = capacity
+        self.tree = SumTree(memory_size)
         self.alpha_per = alpha_per
         self.beta_per = beta_per
+        self.beta_rate_per = beta_rate_per
         self.epsilon_per = epsilon_per
-        self.max_sample = max_sample
         self.batch_size = batch_size
         self.max_priority = 1
         self._size = 0
@@ -209,7 +215,7 @@ class PrioritizedReplay:
         self.history_length = history_length
 
         # Experience
-        self.state_buffer = [(np.zeros((80, 80), dtype=np.float32)) for _ in range(memory_size)]
+        self.state_buffer = [(np.zeros((84, 84), dtype=np.float32)) for _ in range(memory_size)]
         self.action_buffer = np.zeros(memory_size)
         self.reward_buffer = np.zeros(memory_size)
         self.done_buffer = np.zeros(memory_size)
@@ -217,8 +223,6 @@ class PrioritizedReplay:
         # self.action_buffer = []
         # self.reward_buffer = []
         # self.done_buffer = []
-
-        self.buffer = [(np.zeros((80, 80), dtype=np.float32), 0.0, 0.0, 0.0) for _ in range(memory_size)]
         # ?
         self.available_sample = 0
 
@@ -248,7 +252,9 @@ class PrioritizedReplay:
             # Use data_index to get the end of the current state
             # The idea of start and end comes from stacking several states to capture movement
             if not self.valid_index(data_index):
-                print('Invalid data index')
+                # print('Invalid data index')
+                continue
+
             state_start_index = data_index - self.history_length + 1
             state_end_index = data_index
             next_state_start_index = state_start_index + 1
@@ -283,7 +289,7 @@ class PrioritizedReplay:
 
         # It's said this should rarely happen, but what is this?
         while len(sampled_data) < batch_size:
-            print('This should rarely happen')
+            # print('This should rarely happen')
             sampled_data.append(random.choice(sampled_data))
 
         # Convert list of namedtuples into namedtuple of numpy arrays
@@ -300,6 +306,9 @@ class PrioritizedReplay:
         #       f'{sampled_data.next_state.shape}, {sampled_data.done.shape}, {sampled_data.priority.shape}, '
         #       f'{sampled_data.index.shape}')
 
+        # Anneal beta from initial beta_per to 1.0
+        self._update_beta()
+
         return sampled_data
 
     def update_priorities(self, zip_index_priority):
@@ -310,14 +319,17 @@ class PrioritizedReplay:
             self.tree.update(index, priority)
 
     def _update_beta(self):
-        return None
+        """
+        When sample a mini batch from buffer by sample method of PrioritizedReplay, anneal beta from initial beta to 1.0
+        """
+        self.beta_per = min(1.0, self.beta_per * self.beta_rate_per ** -1)
+        return self.beta_per
 
     def append(self, experience_tuple):
         # Add a new experience to replay memory
         # print(f'len(self.state_buffer): {len(self.state_buffer)}\tself.pos: {self.pos}')
         # print(f'experience_tuple[0].cpu().numpy().shape: {experience_tuple[0].cpu().numpy().shape}\t'
         #       f'self.state_buffer[self.pos].shape: {self.state_buffer[self.pos].shape}')
-        self.buffer[self.pos] = experience_tuple
         self.state_buffer[self.pos] = experience_tuple[0].cpu().numpy()
         self.action_buffer[self.pos] = experience_tuple[1]
         self.reward_buffer[self.pos] = experience_tuple[2]
@@ -501,14 +513,14 @@ class PERAgent:
         x = x.permute(2, 0, 1)
         # From color to gray
         x = rgb_to_grayscale(x)
-        # Resize from (1, 210, 160) to (1, 80, 80)
-        x = Resize([80, 80])(x)
+        # Resize from (1, 210, 160) to (1, 84, 84)
+        x = Resize([84, 84])(x)
         # Reduce size 1 dimension
         x = x.squeeze(0)
         return x
 
-    def stack_state(self, state, next_state):
-        x = torch.stack([next_state, state])
+    def stack_state(self, state1, state2, state3):
+        x = torch.stack([state3, state2, state1])
         # Add batch size dimension
         x = x.unsqueeze(0)
         return x
@@ -516,8 +528,8 @@ class PERAgent:
     def soft_update_model(self):
         for target_param, online_param in zip(self.target_model.parameters(),
                                               self.online_model.parameters()):
-            target_param.data.copy(self.tau * online_param.data +
-                                   (1.0 - self.tau) * target_param.data)
+            target_param.data.copy_(self.tau * online_param.data +
+                                    (1.0 - self.tau) * target_param.data)
 
 
 class EpsilonGreedyAlgorithm:
@@ -551,24 +563,59 @@ class EpsilonGreedyAlgorithm:
 class DuelingQNetwork(nn.Module):
     def __init__(self, output_dim):
         super(DuelingQNetwork, self).__init__()
-        # in_channels=2 because 2 frames are stacked
-        # (80 + 2 * 0 - 1 * (6 - 1) - 1) / 2 + 1 = (80 - 6) / 2 + 1 = 74 / 2 + 1 = 38
-        # From (80 * 80 * 2) to (38 * 38 * 4)
-        self.conv1 = nn.Conv2d(in_channels=2, out_channels=4, kernel_size=6, stride=2)
-        # (38 + 2 * 0 - 1 * (6 - 1) - 1) / 4 + 1 = (38 - 6) / 4 + 1 = 32 / 4 + 1 = 9
-        # From (38 * 38 * 4) to (9 * 9 * 16)
-        self.conv2 = nn.Conv2d(in_channels=4, out_channels=16, kernel_size=6, stride=4)
-        self.size = 9 * 9 * 16
-        self.fc1 = nn.Linear(self.size, 256)
-        self.state_value = nn.Linear(256, 1)
-        self.action_advantage = nn.Linear(256, output_dim)
+
+        # # in_channels=2 because 2 frames are stacked
+        # # (80 + 2 * 0 - 1 * (6 - 1) - 1) / 2 + 1 = (80 - 6) / 2 + 1 = 74 / 2 + 1 = 38
+        # # From (80 * 80 * 2) to (38 * 38 * 4)
+        # self.conv1 = nn.Conv2d(in_channels=2, out_channels=4, kernel_size=6, stride=2)
+        # # (38 + 2 * 0 - 1 * (6 - 1) - 1) / 4 + 1 = (38 - 6) / 4 + 1 = 32 / 4 + 1 = 9
+        # # From (38 * 38 * 4) to (9 * 9 * 16)
+        # self.conv2 = nn.Conv2d(in_channels=4, out_channels=16, kernel_size=6, stride=4)
+        # self.size = 9 * 9 * 16
+        # self.fc1 = nn.Linear(self.size, 256)
+        # self.state_value = nn.Linear(256, 1)
+        # self.action_advantage = nn.Linear(256, output_dim)
+
+        # (84 + 2 * 0 - 1 * (8 - 1) - 1) / 4 + 1 = (84 - 8) / 2 + 1 = 76 / 2 + 1 = 38 + 1 = 39
+        # From (84 * 84 * 3) to (39 * 39 * 32)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=8, stride=4, padding=0)
+        # (39 + 2 * 0 - 1 * (4 - 1) - 1) / 2 + 1 = (39 - 4) / 2 + 1 = 35 / 2 + 1 = 17.5 + 1 = 18
+        # From (39 * 39 * 32) to (18 * 18 * 64)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=0)
+        # (18 + 2 * 0 - 1 * (3 - 1) - 1) / 1 + 1 = (18 - 3) / 1 + 1 = 15 + 1 = 16
+        # From (18 * 18 * 64) to (16 * 16 * 64)
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=0)
+        # self.size = 16 * 16 * 64
+        # self.fc1 = nn.Linear(self.size, 512)
+        self.fc1 = nn.Linear(3136, 512)
+        self.state_value = nn.Linear(512, 1)
+        self.action_advantage = nn.Linear(512, output_dim)
+
+    # def forward(self, x):
+    #     x = self.conv1(x)
+    #     x = F.relu(x)
+    #     x = self.conv2(x)
+    #     x = F.relu(x)
+    #     x = x.view(-1, self.size)  # Flatten
+    #     x = self.fc1(x)
+    #     x = F.relu(x)
+    #     # Action-advantage
+    #     a = self.action_advantage(x)
+    #     # State-value
+    #     v = self.state_value(x).expand_as(a)
+    #     # Action-value
+    #     q = v + a - a.mean(1, keepdim=True).expand_as(a)
+    #     return q
 
     def forward(self, x):
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
         x = F.relu(x)
-        x = x.view(-1, self.size)  # Flatten
+        x = self.conv3(x)
+        x = F.relu(x)
+        # x = x.view(-1, self.size)  # Flatten
+        x = x.view(-1, 3136)
         x = self.fc1(x)
         x = F.relu(x)
         # Action-advantage
@@ -581,21 +628,6 @@ class DuelingQNetwork(nn.Module):
 
 
 def main():
-
-    # st = SumTree(capacity=4)
-    # print(st.tree)
-    # print(f'total: {st.total()}')
-    # print(st._retrieve(0, 1))
-
-    # s = random.uniform(0, 0)
-    # print(f's: {s}')
-
-    # memory = PrioritizedReplay(capacity=4, batch_size=5, memory_size=4)
-    # print(f'memory.sample(): {memory.sample()}')
-
-    # Sample method of PrioritizedReplay
-    # memory = PrioritizedReplay(capacity=10, memory_size=10)
-    # memory.sample(batch_size=10)
 
     # Environment
     env = gym.make(ENV)
@@ -614,8 +646,8 @@ def main():
                                               epsilon_decay_rate=EPSILON_DECAY_RATE)
 
     # Replay memory
-    # memory = PrioritizedReplay(capacity=CAPACITY, memory_size=MEMORY_SIZE)
-    memory = PrioritizedReplay(capacity=20, memory_size=20)
+    memory = PrioritizedReplay(memory_size=MEMORY_SIZE)
+    # memory = PrioritizedReplay(memory_size=1000)
 
     # Agent
     agent = PERAgent(env=env, device=device,
@@ -630,25 +662,32 @@ def main():
     ma_reward_deque = deque(maxlen=MAXLEN)
     reward_list = []
     total_time_step = 0
+    start_time = time.time()
 
     # Training
-    for i in range(EPISODE):
+    # for i in range(EPISODE):
+    for i in range(3):
 
         # Initialization for each episode
         state1 = env.reset()
         state2, _, _, _ = env.step(0)
+        state3, _, _, _ = env.step(0)
         processed_state1 = agent.process_state(state1)
         processed_state2 = agent.process_state(state2)
-        stack_state = agent.stack_state(state=processed_state1,
-                                        next_state=processed_state2)
+        processed_state3 = agent.process_state(state3)
+        stack_state = agent.stack_state(state1=processed_state1,
+                                        state2=processed_state2,
+                                        state3=processed_state3)
         total_reward = 0
         time_step = 0
+        start_time_episode = time.time()
 
-        # while True:
-        while total_time_step < 20:
+        while True:
+        # while total_time_step < 20:
 
-            # env.render()
-            # time.sleep(0.05)
+            if RENDER:
+                env.render()
+                # time.sleep(0.05)
 
             action = agent.action_algorithm.select_action(model=agent.online_model, state=stack_state)
 
@@ -658,11 +697,12 @@ def main():
             agent.memory.append((processed_state1, action, reward, done))
 
             # When we have sufficient experience in replay memory, we start training
-            # if total_time_step > DELAY_TRAINING:
-            if total_time_step > 10:
+            if total_time_step > DELAY_TRAINING:
+            # if total_time_step > 100:
 
                 # Sample mini batch
-                mini_batch = agent.memory.sample(batch_size=2)
+                mini_batch = agent.memory.sample(batch_size=BATCH_SIZE)
+                # mini_batch = agent.memory.sample(batch_size=2)
 
                 # Calculate losses of each batch
                 loss = agent.compute_loss(mini_batch=mini_batch)
@@ -673,10 +713,15 @@ def main():
                 # Gradient descent to update weights of neural network
                 agent.update_online_model(loss=loss)
 
+                # Update target model with online mode
+                agent.soft_update_model()
+
             processed_state1 = processed_state2
-            processed_state2 = agent.process_state(state)
-            next_stack_state = agent.stack_state(state=processed_state1,
-                                                 next_state=processed_state2)
+            processed_state2 = processed_state3
+            processed_state3 = agent.process_state(state)
+            next_stack_state = agent.stack_state(state1=processed_state1,
+                                                 state2=processed_state2,
+                                                 state3=processed_state3)
 
             total_reward += reward
 
@@ -687,10 +732,18 @@ def main():
 
             # Monitor in each time step
             nl = '\n'
-            print(f'Time step: {time_step}\t'
-                  f'Max priority: {memory.max_priority}\t'
-                  f'Action buffer: {memory.action_buffer[:15]}\t'
-                  f'Tree: {np.array_repr(memory.tree.tree[:10]).replace(nl, "")}')
+            # print(
+                # f'Time step: {time_step}\t| '
+                # f'Max priority: {agent.memory.max_priority:.4f}\t| '
+                # f'Memory position: {agent.memory.pos}\t| '
+                # f'Memory size: {len(agent.memory)}\t| '
+                # f'Epsilon action: {agent.action_algorithm.epsilon:.2f}\t| '
+                # f'Action buffer: {memory.action_buffer[:15]}\t'
+                # f'Tree: {np.array_repr(memory.tree.tree[:10]).replace(nl, "")}'
+            # )
+            print(f'\rTime step per episode: {time_step}\t| '
+                  f'Action: {action}\t| '
+                  , end='')
 
             # break
             if done:
@@ -700,10 +753,36 @@ def main():
         reward_list.append(total_reward)
 
         # Monitor in each episode
-        print(f'\rEpisode: {i}\t| Total time step: {total_time_step}\t| '
-              f'Time step per episode: {time_step}\t| '
-              f'Average score: {np.mean(ma_reward_deque):.2}\t| '
-              f'Current write position in memory: {memory.pos}')
+        # print(f'\rEpisode: {i}\t| Total time step: {total_time_step}\t| '
+        #       f'Time step per episode: {time_step}\t| '
+        #       f'Average score: {np.mean(ma_reward_deque):.2f}\t| '
+        #       f'Current write position in memory: {memory.pos}')
+
+        print(
+            f'\nEpisode: {i:,}\t| '
+            f'Average score: {np.mean(ma_reward_deque):.1f}\t| '
+            f'Episode score: {total_reward:.1f}\t| '
+            f'Epsilon action: {agent.action_algorithm.epsilon:.3f}\t| '
+            f'Alpha PER: {agent.memory.alpha_per}\t| '
+            f'Beta PER: {agent.memory.beta_per:.3f}\t| '
+            f'SumTree total: {agent.memory.tree.total():,.1f}\t| '
+            f'Max priority: {agent.memory.max_priority:,.1f}\t| '
+            f'Time step per episode: {time_step:,}\t| '
+            f'Total time step: {total_time_step:,}\t| '
+            f'Memory position: {agent.memory.pos:,}\t| '
+            f'Memory size: {len(agent.memory):,}\t| '
+            f'Total elapsed time: {(time.time() - start_time) / 60:,.1f} min\t| '
+            f'Elapsed time per episode: {(time.time() - start_time_episode):,.1f} sec\t| '
+            f'Last action: {action}\t| '
+        )
+
+    # Save score
+    # pickle.dump(reward_list, open(SCORE, 'wb'))
+    # print('Saved score')
+
+    # Save model
+    # torch.save(agent.target_model.state_dict(), MODEL)
+    # print('Saved model')
 
 
 if __name__ == '__main__':
