@@ -47,8 +47,10 @@ class Policy(nn.Module):
                     action_prob = 1.0
                 else:
                     c = torch.distributions.Categorical(logits=logits)
+                    # print('logits', logits)
                     action = int(c.sample().cpu().numpy()[0])
                     action_prob = float(c.probs[0, action].detach().cpu().numpy())
+                    print('probs', c.probs[0, :])
                 return action, action_prob
         '''
         # policy gradient (REINFORCE)
@@ -89,6 +91,8 @@ for it in range(100000):
             d_obs = policy.pre_process(obs, prev_obs)
             with torch.no_grad():
                 action, action_prob = policy(d_obs)
+
+            # print('action_prob', action_prob)
 
             prev_obs = obs
             obs, reward, done, info = env.step(policy.convert_action(action))

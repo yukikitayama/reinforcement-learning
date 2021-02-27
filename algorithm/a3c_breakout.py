@@ -1,4 +1,6 @@
 """
+https://github.com/mimoralea/gdrl/blob/master/notebooks/chapter_11/chapter-11.ipynb
+
 Atari Breakout state preprocessing from (210, 160, 3) to ()
 """
 import gym
@@ -9,8 +11,11 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 import numpy as np
 import random
+import time
+from itertools import count
+import gc  # https://stackify.com/python-garbage-collection/
 # Parallel
-from multiprocessing import Process
+from multiprocessing import Process, Lock
 import os
 from torchvision.transforms import Resize
 from torchvision.transforms.functional import rgb_to_grayscale
@@ -18,16 +23,26 @@ import matplotlib.pyplot as plt
 
 
 # Parameter
+N_WORKERS = 2
+MAX_EPISODES = 1
 LR = 1e-3
+POLICY_OPTIMIZER_LR = 0.0005  # Adam optimizer learning rate for policy
+VALUE_OPTIMIZER_LR = 0.0007  # RMSprop optimizer learning rate for state value function
+ENTROPY_LOSS_WEIGHT = 0.001  # The hyperparameter beta which controls the strength of the entropy regularization term
+# from Asynchronous Methods for Deep Reinforcement Learning paprer
+POLICY_MAX_GRAD_NORM = 1  # Gradient clip for policy parameter
+VALUE_MAX_GRAD_NORM = float('inf')  # Gradient clip for state value function parameter
+PATH_SAVE_POLICY = '../model/a3c_breakout_policy.pth'
 ENV = 'BreakoutNoFrameskip-v4'
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+print(f'device: {device}')
 SEED = 0
 
 
 class Policy(nn.Module):
     """
     Fully connected discrete action policy. Forward method returns logits with the length number of discrete actions.
-    full_pass method is a helper method to produce everything useful during training, including probabilities, actions,
+    full_pass method is a helper method to produce everything useful during training, including probabilities, actions,A
     entropy
     """
     def __init__(self, output_dim):
@@ -59,8 +74,11 @@ class Policy(nn.Module):
         m = Categorical(logits=logits)
         action = m.sample()
 
-        # unsqueeze(-1) makes (minibatch size, 1)
+        # unsqueeze(-1) makes add dimension 1 at the end
+        # e.g. [] -> [1], [batch size] -> [batch size, 1]
         log_prob = m.log_prob(action).unsqueeze(-1)
+        # m.entropy() produces torch.Tensor with the size torch.Size([])
+        # With .unsqueeze(-1) -> Size([1])
         entropy = m.entropy().unsqueeze(-1)
 
         return action, log_prob, entropy
@@ -106,10 +124,90 @@ class StateValueFunction(nn.Module):
         return x
 
 
+class SharedAdam(torch.optim.Adam):
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0, amsgrad=False):
+        """
+        arguments are all default arguments of torch.optim.Adam. Params are weights of neural network. Betas are
+        coefficients for gradient averages, eps is numerical stability term to denominator, weight_decay is L2 penalty,
+        and amsgrad is boolean weather to use AMSGrad.
+
+        Adam is subclass of torch.optim.Optimizer. Optimizer has an instance variable self.param_groups. param_groups is
+        a list of dictionary with keys ['params', 'lr', 'betas', 'eps', 'weight_decay', 'amsgrad']. self.state is also
+        an instance variable of torch.optim.Optimizer. It is a dictionary of
+        """
+        super(SharedAdam, self).__init__(params, lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad)
+
+        # The below initialization come from source code of torch Adam,
+        # https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam
+        # group is dictionary keys ['params', 'lr', 'betas', 'eps', 'weight_decay', 'amsgrad']
+        for group in self.param_groups:
+            # p is weight in each layer of nn
+            for p in group['params']:
+                # state is dict
+                state = self.state[p]
+                # Initialize state
+                state['step'] = 0
+                state['shared_step'] = torch.zeros(1).share_memory_()
+                state['exp_avg'] = torch.zeros_like(p.data).share_memory_()
+                state['exp_avg_sq'] = torch.zeros_like(p.data).share_memory_()
+                if weight_decay:
+                    state['weight_decay'] = torch.zeros_like(p.data).share_memory_()
+                if amsgrad:
+                    state['max_exp_avg_sq'] = torch.zeros_like(p.data).share_memory_()
+
+    def step(self, closure=None):
+        """
+        Modification to original Adam step source code,
+        https://pytorch.org/docs/stable/_modules/torch/optim/adam.html#Adam
+        This eventually runs Adam's step, but I don't know why we have this extra lines in step
+        """
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                # Want to update step by workers sharing shared_step?
+                # There are two different, step and steps
+                self.state[p]['steps'] = self.state[p]['shared_step'].item()
+                self.state[p]['shared_step'] += 1
+        # But does the below not override steps?
+        # -> No, because Adam step updates step, not step"s"
+        super().step(closure)
+
+
+class SharedRMSprop(torch.optim.RMSprop):
+    def __init__(self, params, lr=1e-2, alpha=0.99, eps=1e-8, weight_decay=0, momentum=0, centered=False):
+        super(SharedRMSprop, self).__init__(params, lr=lr, alpha=alpha, eps=eps, weight_decay=weight_decay,
+                                            momentum=momentum, centered=centered)
+
+        for group in self.param_groups:
+            for p in group['params']:
+                state = self.state[p]
+                state['step'] = 0
+                state['shared_step'] = torch.zeros(1).share_memory_()
+                state['square_avg'] = torch.zeros_like(p.data).share_memory_()
+                if weight_decay:
+                    state['weight_decay'] = torch.zeros_like(p.data).share_memory_()
+                if momentum > 0:
+                    state['momentum_buffer'] = torch.zeros_like(p.data).share_memory_()
+                if centered:
+                    state['grad_avg'] = torch.zeros_like(p.data).share_memory_()
+
+    def step(self, closure=None):
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                self.state[p]['steps'] = self.state[p]['shared_step'].item()
+                self.state[p]['shared_step'] += 1
+        super().step(closure)
+
+
 class A3CAgent:
     def __init__(self, env, output_dim,
-                 shared_policy, shared_state_value_function,
-                 device, seed, policy_instance=None, policy_class=None,
+                 shared_policy, shared_state_value_function, shared_policy_optimizer, shared_value_optimizer,
+                 device, seed, entropy_loss_weight, policy_max_grad_norm, value_max_grad_norm,
+                 max_episodes, path_save_policy,
+                 gamma=0.99, policy_instance=None, policy_class=None,
                  state_value_function_class=None):
         self.n_workers = 2
 
@@ -120,9 +218,27 @@ class A3CAgent:
         self.state_value_function_class = state_value_function_class
         self.device = device
         self.seed = seed
+        self.entropy_loss_weight = entropy_loss_weight
+        self.gamma = gamma
 
         self.shared_policy = shared_policy
         self.shared_state_value_function = shared_state_value_function
+        self.shared_policy_optimizer = shared_policy_optimizer
+        self.shared_value_optimizer = shared_value_optimizer
+        self.policy_max_grad_norm = policy_max_grad_norm
+        self.value_max_grad_norm = value_max_grad_norm
+
+        self.path_save_policy = path_save_policy
+
+        self.stats = {
+            'episode': torch.zeros(1, dtype=torch.int).share_memory_(),
+            'episode_reward': torch.zeros([max_episodes]).share_memory_(),
+            'n_active_workers': torch.zeros(1, dtype=torch.int).share_memory_()
+        }
+
+        # Initialize
+        self.get_out_signal = None
+        self.get_out_lock = None
 
     def process_state(self, state):
         x = torch.tensor(data=state, dtype=torch.float, device=device)
@@ -144,11 +260,108 @@ class A3CAgent:
 
         return x
 
+    # Why staticmethod?
+    @staticmethod
+    def interaction_step(state, env, local_policy, local_state_value_function,
+                         logprobs, entropies, rewards, values):
+        # TODO: process state
+        # TODO: stack state
+        action, logprob, entropy = local_policy.full_pass(state)
+        next_state, reward, done, info = env.step(action)
+
+        logprobs.append(logprob)
+        entropies.append(entropy)
+        rewards.append(reward)
+        values.append(local_state_value_function(state))
+
+        return next_state, reward, done
+
+    def optimize_model(self, logprobs, entropies, rewards, values, local_policy, local_state_value_function):
+        """
+        logprobs: A list of torch tensors log of probability of an action taken size([1])
+        entropies: A list of torch tensors size([1])
+        values: Should be a list of torch tensors size([1]) state value
+        """
+
+        # Get size
+        T = len(rewards)
+
+        # Calculate return
+        # Starts at base**start, and ends with base**stop
+        # If T = 10, 0.99 ** 0 = 1, 0.99 ** 1 = 0.99. 0.99 ** 2, ... 0.99 ** 9 = 0.9135
+        # endpoint, if true, stop is the last sample. Otherwise it's not included
+        discounts = np.logspace(start=0, stop=T, num=T, endpoint=False, base=self.gamma)
+        # rewards is [early reward, ..., late reward], because it's appended in list
+        # Starts from length T, and ends with length 1
+        # Iteratively, discounts list loses the tail part, and rewards list loses the head part, but those two list
+        # are the same length in each iteration of for loop
+        # To check run the below
+        # for t in range(T):
+        #     print('discounts', discounts[:T-t])
+        #     print('rewards', rewards[t:])
+        #     print()
+        # Get discounted returns from each time step
+        returns = np.array([np.sum(discounts[:T-t] * rewards[t:]) for t in range(T)])
+
+        # Make everything torch tensor to do gradient descent
+        # Why remove the last one?
+        # unsqueeze(1) makes [T,] -> [T, 1]
+        discounts = torch.FloatTensor(discounts[:-1]).unsqueeze(1)
+        # Why remove the last one?
+        # unsqueeze(1) makes [T,] -> [T, 1]
+        returns = torch.FloatTensor(returns[:-1]).unsqueeze(1)
+        # logprobs is a Python list. Each element has torch tensor size([1]), which from model and unsqueeze(-1)
+        # The below makes it torch tensor size([T])
+        logprobs = torch.cat(logprobs)
+        entropies = torch.cat(entropies)
+        values = torch.cat(values)
+
+        # Actual sampled returns of episodes - estimated state values from model
+        value_error = returns - values
+        # error multiplied by log policy, but why multiply discounts?
+        policy_loss = -(discounts * value_error.detach() * logprobs).mean()
+        entropy_loss = -entropies.mean()
+        loss = policy_loss + self.entropy_loss_weight * entropy_loss
+
+        # Gradient ascent for policy
+        self.shared_policy_optimizer.zero_grad()
+        loss.bachward()
+        # clip_grad_norm_ modifies gradients in-place
+        torch.nn.utils.clip_grad_norm_(
+            parameters=local_policy.parameters(),
+            max_norm=self.policy_max_grad_norm
+        )
+        #
+        for param, shared_param in zip(local_policy.parameters(), self.shared_policy.parameters()):
+            # ?
+            if shared_param.grad is None:
+                shared_param._grad = param.grad
+        self.shared_policy_optimizer.step()
+        # Replace local policy with shared policy
+        local_policy.load_state_dict(self.shared_policy.state_dict())
+
+        # Gradient descent for state value function
+        value_loss = value_error.pow(2).mul(0.5).mean()
+        self.shared_value_optimizer.zero_grad()
+        value_loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            parameters=local_state_value_function.parameters(),
+            max_norm=self.value_max_grad_norm
+        )
+        for param, shared_param in zip(local_state_value_function.parameters(),
+                                       self.shared_state_value_function.parameters()):
+            # ?
+            if shared_param.grad is None:
+                shared_param._grad = param.grad
+        self.shared_value_optimizer.step()
+        local_state_value_function.load_state_dict(self.shared_state_value_function.state_dict())
+
     def work(self, rank):
         """
         rank is an ID for workers
         """
         print(f'Worker PID: {os.getpid()}')
+        self.stats['n_active_workers'].add_(1)
 
         # Local environment
         env = gym.make(ENV)
@@ -170,12 +383,81 @@ class A3CAgent:
         # Value function
         local_state_value_function = self.state_value_function_class()
         local_state_value_function.load_state_dict(self.shared_state_value_function.state_dict())
-        print(f'Hashcode of local state value function: {hash(local_state_value_function)}')
+        # print(f'Hashcode of local state value function: {hash(local_state_value_function)}')
+
+        # Update stats episode in place, and get the previous episode number before updating
+        global_episode_idx = self.stats['episode'].add_(1).item() - 1
+
+        while not self.get_out_signal:
+
+            # Initialize for each episode
+            state = env.reset()
+            # ?
+            total_episode_rewards = 0
+            # ?
+            logprobs = []
+            entropies = []
+            rewards = []
+            values = []
+
+            # count() generate values starting from start and default interval 1
+            # This for loop breaks with break by if statement with done
+            for step in count(start=1):
+                state, reward, done = self.interaction_step(
+                    state, env, local_policy, local_state_value_function,
+                    logprobs, entropies, rewards, values
+                )
+
+                total_episode_rewards += reward
+
+                if done:
+                    # TODO: Process state
+                    # TODO: Stack state
+                    next_value = local_state_value_function(state).detach().item()
+                    rewards.append(next_value)
+
+                    # Update policy and state value function at the end of each episode with collected experience
+                    self.optimize_model(
+                        logprobs, entropies, rewards, values, local_policy, local_state_value_function
+                    )
+
+                    # Clear experiences for next episode
+                    logprobs = []
+                    entropies = []
+                    rewards = []
+                    values = []
+
+                if done:
+                    # Trigger a manual garbage collection process to clean up objects
+                    gc.collect()
+                    # Break for step in count(start=1)
+                    break
+
+            # Get stats of each episode
+            # Value of 'episode_reward' is torch tensor size max_episodes, recording total rewards in each element
+            self.stats['episode_reward'][global_episode_idx].add_(total_episode_rewards)
+
+            # Save model
+            torch.save(local_policy.state_dict(), self.path_save_policy)
+
+            with self.get_out_lock:
+                potential_next_global_episode_idx = self.stats['episode'].item()
+                if something:
+                    self.get_out_signal.add_(1)
+                    # Break for while not self.get_out_signal
+                    break
+
+                # Else go to another episode
+                global_episode_idx = self.stats['episode'].add_(1).item() - 1
+
 
         return None
 
     def train(self):
         print(f'Main process PID: {os.getpid()}')
+
+        self.get_out_lock = Lock()
+        self.get_out_signal = torch.zeros(1, dtype=torch.int).share_memory_()
 
         # Make multiple workers from list comprehension with multiprocessing.Process
         workers = [Process(target=self.work, args=(rank,)) for rank in range(self.n_workers)]
@@ -190,7 +472,12 @@ class A3CAgent:
         # Wait all the subprocesses to finish
         [worker.join() for worker in workers]
 
-        return None
+        final_episode = self.stats['episode'].item()
+
+        print('Training complete')
+        self.stats['result'] = self.stats['result'].numpy()
+
+        return self.stats['result']
 
     def test(self):
         # process_state
@@ -280,11 +567,15 @@ def main():
     shared_state_value_function = StateValueFunction().to(device).share_memory()
 
     # Optimizer
-    shared_policy_optimizer = optim.Adam(shared_policy.parameters(), lr=LR)
+    # shared_policy_optimizer = optim.Adam(shared_policy.parameters(), lr=LR)
     shared_state_value_function_optimizer = optim.Adam(
         shared_state_value_function.parameters(),
         lr=LR
     )
+    shared_policy_optimizer = SharedAdam(params=shared_policy.parameters(), lr=POLICY_OPTIMIZER_LR)
+    shared_value_optimizer = SharedRMSprop(params=shared_state_value_function.parameters(), lr=VALUE_OPTIMIZER_LR)
+
+    # Test optimizer
 
     # Agent
     # agent = A3CAgent(env=env, policy_instance=policy, device=device)
@@ -294,7 +585,13 @@ def main():
                      state_value_function_class=StateValueFunction,
                      shared_policy=shared_policy,
                      shared_state_value_function=shared_state_value_function,
-                     device=device, seed=SEED)
+                     shared_policy_optimizer=shared_policy_optimizer,
+                     shared_value_optimizer=shared_value_optimizer,
+                     policy_max_grad_norm=POLICY_MAX_GRAD_NORM,
+                     value_max_grad_norm=VALUE_MAX_GRAD_NORM,
+                     device=device, seed=SEED, entropy_loss_weight=ENTROPY_LOSS_WEIGHT,
+                     max_episodes=MAX_EPISODES,
+                     path_save_policy=PATH_SAVE_POLICY)
 
     # Test agent
     # agent.test()
