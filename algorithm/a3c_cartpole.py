@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 import torch.multiprocessing as mp
+import numpy as np
 import gym
 import os
 
@@ -25,10 +27,17 @@ print()
 
 
 # Initialize weights in layers in neural network
-def set_init(layers):
+def initialize_weights(layers):
     for layer in layers:
         nn.init.normal_(layer.weight, mean=0.0, std=0.1)
         nn.init.constant_(layer.bias, 0.0)
+
+
+def np_to_tensor(np_array, dtype=np.float32):
+    if np_array.dtype != dtype:
+        np_array = np_array.astype(dtype)
+    tensor = torch.from_numpy(np_array)
+    return tensor
 
 
 # Record result when episode ends
@@ -84,7 +93,56 @@ class Network(nn.Module):
         self.v1 = nn.Linear(s_dim, 128)
         self.v2 = nn.Linear(128, 1)
         # Initialize weights
-        set_init([self.pi1, self.pi2, self.v1, self.v2])
+        initialize_weights([self.pi1, self.pi2, self.v1, self.v2])
+        # Creates a categorical distribution parameterized by probabilities here
+        self.distribution = torch.distributions.Categorical
+
+    def forward(self, x):
+        """
+        x is state tensor.
+        """
+        # Logits for policy
+        pi1 = torch.tanh(self.pi1(x))
+        logits = self.pi2(pi1)
+        # State value function
+        v1 = torch.tanh(self.v1(x))
+        values = self.v2(v1)
+        return logits, values
+
+    def choose_action(self, s):
+        """
+        s is state tensor
+        """
+        # Use eval() because it's inference
+        self.eval()
+        logits, _ = self.forward(s)
+        # logits has size ([n, action dimensions])
+        prob = F.softmax(logits, dim=1).data
+        m = self.distribution(probs=prob)
+        # numpy() returns shape (1,) so numpy()[0] returns a scalar
+        action = m.sample().numpy()[0]
+        return action
+
+    def loss_func(self, s, a, v_t):
+        """
+        v_t?
+        """
+        self.train()
+        logits, values = self.forward(s)
+
+        # Value loss, td is an estimate of advantage function
+        td = v_t - values
+        c_loss = td.pow(2)
+
+        # Policy loss
+        probs = F.softmax(logits, dim=1)
+        m = self.distribution(probs=probs)
+        # From A3C paper, why detach()?
+        exp_v = m.log_prob(a) * td.detach().squeeze()
+        # Why negative?
+        a_loss = -exp_v
+        total_loss = (c_loss + a_loss).mean()
+        return total_loss
 
 
 # Override the run method by subclassing mp.Process
@@ -92,14 +150,14 @@ class Worker(mp.Process):
     def __init__(self, global_network, global_optimizer, global_ep, global_ep_r, res_queue, name):
         super(Worker, self).__init__()
         self.name = f'agent_{"0" + str(name) if name < 10 else str(name)}'
-        print(f'Made {self.name} in process ID: {os.getpid()} and parent ID: {os.getppid()}')
+        print(f'{self.name} is made in process ID: {os.getpid()} and parent ID: {os.getppid()}')
         self.g_ep = global_ep
         self.g_ep_r = global_ep_r
         self.res_queue = res_queue
         self.local_env = gym.make(ENV).unwrapped
 
     def run(self):
-        print(f'Started {self.name} in process ID: {os.getpid()} and parent ID: {os.getppid()}')
+        print(f'{self.name} started in process ID: {os.getpid()} and parent ID: {os.getppid()}')
 
         record(global_episode=self.g_ep, global_episode_reward=self.g_ep_r, name=self.name)
 
@@ -115,6 +173,9 @@ if __name__ == '__main__':
 
     # Shared network
     global_network = Network(N_S, N_A)
+
+    # Share the shared network parameters in multiprocessing
+    global_network.share_memory()
 
     # Shared optimizer
     global_optimizer = SharedAdam(global_network.parameters(), lr=LR, betas=(BETA_01, BETA_02))
@@ -133,11 +194,10 @@ if __name__ == '__main__':
     print('Make parallel agents')
     workers = [Worker(global_network, global_optimizer, global_ep, global_ep_r, res_queue, i)
                for i in range(NUM_WORKERS)]
-    print()
 
     # Start parallel training
-    print('Start parallel training')
     print()
+    print('*** Start parallel training ***')
     [w.start() for w in workers]
 
     # total_rewards = []
@@ -150,5 +210,5 @@ if __name__ == '__main__':
 
     # End parallel training
     [w.join() for w in workers]
-    print('End parallel training')
+    print('*** End parallel training ***')
     print()
