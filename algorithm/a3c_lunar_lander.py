@@ -19,25 +19,28 @@ print(f'Number of CPUs: {mp.cpu_count()}')
 NUM_WORKERS = mp.cpu_count()
 # NUM_WORKERS = 2
 print(f'Number of workers: {NUM_WORKERS}')
-ENV = 'CartPole-v0'
+ENV = 'LunarLander-v2'
 env = gym.make(ENV)
 N_S = env.observation_space.shape[0]
 N_A = env.action_space.n
+print(f'State dimension: {N_S}, action dimension: {N_A}')
 # Adam
 LR = 0.0001
+# LR = 0.001
 BETA_01 = 0.92
 BETA_02 = 0.999
 # Max number of episodes
-MAX_EP = 4000
+MAX_EP = 10000
 # MAX_EP = 10
 # Frequency to update shared neural network
-UPDATE_GLOBAL_ITER = 5
-# UPDATE_GLOBAL_ITER = 10
-GAMMA = 0.9
+# UPDATE_GLOBAL_ITER = 5
+# UPDATE_GLOBAL_ITER = 50
+UPDATE_GLOBAL_ITER = 10
+GAMMA = 0.999
 SEED = 0
-REWARDS = '../object/a3c_cartpole_reward.pkl'
-MODEL = '../model/a3c_cartpole.pt'
-SAVEFIG_01 = '../image/a3c_cartpole.png'
+REWARDS = f'../object/a3c_{ENV}_reward.pkl'
+MODEL = f'../model/a3c_{ENV}.pt'
+SAVEFIG_01 = f'../image/a3c_{ENV}.png'
 print()
 
 
@@ -241,7 +244,8 @@ class Worker(mp.Process):
         self.shared_rewards_queue = shared_rewards_queue
         # Local elements
         self.local_network = Network(N_S, N_A)
-        self.local_env = gym.make(ENV).unwrapped
+        # self.local_env = gym.make(ENV).unwrapped
+        self.local_env = gym.make(ENV)
         self.local_env.seed(name)
         self.name = f'worker_{"0" + str(name) if name < 10 else str(name)}'
         print(f'{self.name} is made in process ID: {os.getpid()} and parent ID: {os.getppid()}')
@@ -266,7 +270,7 @@ class Worker(mp.Process):
             while True:
 
                 # Only print worker_00's interaction with environment
-                if self.name == 'worker_01':
+                if self.name == 'worker_00':
                     self.local_env.render()
 
                 # Choose action
