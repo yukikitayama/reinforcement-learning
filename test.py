@@ -4,14 +4,30 @@ import torch
 import tensorflow as tf
 
 
+ENV = 'SpaceInvaders-v0'
+# ENV = 'Breakout-v4'
+
+
 def check_gym():
-    env = gym.make('SpaceInvaders-v0')
+    env = gym.make(ENV)
     print('action space', env.action_space)
     print('observation space', env.observation_space)
 
     obs = env.reset()
     plt.imshow(obs)
     plt.show()
+
+
+def check_gym_interaction():
+    env = gym.make(ENV)
+    env.reset()
+    while True:
+
+        env.render()
+        s, r, d, _ = env.step(0)
+
+        if d:
+            break
 
 
 def check_pytorch():
@@ -25,7 +41,9 @@ def check_tensorflow():
 def main():
 
     # Gym
-    check_gym()
+    # check_gym()
+
+    # check_gym_interaction()
 
     # Pytorch
     check_pytorch()
