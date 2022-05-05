@@ -3,4 +3,9 @@ env/
 # My personal expression for testing purpose pythons
 test_*.py
 .idea/
-
+algorithm/ppo_PongNoFrameskip-v4_s-gv.py
+test.py
+algorithm/__pycache__/
+tmp*
+tmp/
+.idea/

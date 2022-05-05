@@ -17,6 +17,7 @@ Question
     outside of the object by setattr()
 - What is the difference of index and data_index?
 - Why do we sample from uniform distribution in sample method of prioritized replay class?
+- Should I divide image by 255 and by torch.div(input, 255)
 
 Algorithm
 - Replay buffer samples (index, priority, data index) by SumTree get method.
@@ -53,31 +54,48 @@ PrioritizedExperience = namedtuple('Experience',
 # Parameter
 
 # Deep Q Network
-EPISODE = 10000
-EPSILON_DECAY_RATE = 0.99999
-STACK_FRAME = 3
+# EPISODE = 10000
+# EPISODE = 5000
+EPISODE = 100000
+# EPSILON_DECAY_RATE = 0.99999
+EPSILON_DECAY_RATE = 0.999999
+STACK_FRAME = 4
 # LR = 1e-3
 LR = 1e-4
+# LR = 1e-5
+# DELAY_TRAINING = 1000
+# DELAY_TRAINING = 50000
+DELAY_TRAINING = 100000
+SEED = 1
 RENDER = True
-TAU = 1e-3
-DELAY_TRAINING = 1000
+TAU = 0.01
+# TAU = 1e-3
+# TAU = 1e-4
+# TAU = 1e-5
 GAMMA = 0.99
+# GAMMA = 0.999
+# GAMMA = 0.9999
 EPSILON_START = 1.0
+# EPSILON_MIN = 0.01
 EPSILON_MIN = 0.1
 EPSILON_DECAY_STEP = 20000
-# BATCH_SIZE = 32
-BATCH_SIZE = 64
+BATCH_SIZE = 32
+# BATCH_SIZE = 64
 MAXLEN = 100
 SCORE = '../object/duel_ddqn_per_space_invaders_score.pkl'
 MODEL = '../model/duel_ddqn_per_space_invaders_target_model.pth'
 
 # experience replay
-MEMORY_SIZE = 100000
+# MEMORY_SIZE = 100000
+# MEMORY_SIZE = 200000
+MEMORY_SIZE = 500000
+# MEMORY_SIZE = 750000  # Too big
+# MEMORY_SIZE = 1000000  # Too big
 BETA_RATE_PER = 0.9999999
 ALPHA_PER = 0.6
 BETA_PER = 0.4
-EPSILON_PER = 0.01
-# EPSILON_PER = 1e-6
+# EPSILON_PER = 0.001
+EPSILON_PER = 1e-6
 
 
 class SumTree:
@@ -376,7 +394,7 @@ class PrioritizedReplay:
 
 class PERAgent:
     def __init__(self, env, device, online_model, target_model, action_algorithm,
-                 tau, optimizer, gamma, memory, seed=0, online_network=None, target_network=None):
+                 tau, optimizer, gamma, memory, seed=SEED, online_network=None, target_network=None):
         self.online_network = online_network
         self.target_network = target_network
         self.num_action = env.action_space.n
@@ -517,10 +535,12 @@ class PERAgent:
         x = Resize([84, 84])(x)
         # Reduce size 1 dimension
         x = x.squeeze(0)
+        # Normalize input 0 to i
+        x = x.div(255)
         return x
 
-    def stack_state(self, state1, state2, state3):
-        x = torch.stack([state3, state2, state1])
+    def stack_state(self, state1, state2, state3, state4):
+        x = torch.stack([state4, state3, state2, state1])
         # Add batch size dimension
         x = x.unsqueeze(0)
         return x
@@ -546,8 +566,10 @@ class EpsilonGreedyAlgorithm:
         return self.epsilon
 
     def select_action(self, model, state):
+        model.eval()
         with torch.no_grad():
             q_values = model(state).detach().cpu().data.numpy().squeeze()
+        model.train()
 
         if np.random.rand() > self.epsilon:
             action = np.argmax(q_values)
@@ -578,7 +600,7 @@ class DuelingQNetwork(nn.Module):
 
         # (84 + 2 * 0 - 1 * (8 - 1) - 1) / 4 + 1 = (84 - 8) / 2 + 1 = 76 / 2 + 1 = 38 + 1 = 39
         # From (84 * 84 * 3) to (39 * 39 * 32)
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=8, stride=4, padding=0)
+        self.conv1 = nn.Conv2d(in_channels=4, out_channels=32, kernel_size=8, stride=4, padding=0)
         # (39 + 2 * 0 - 1 * (4 - 1) - 1) / 2 + 1 = (39 - 4) / 2 + 1 = 35 / 2 + 1 = 17.5 + 1 = 18
         # From (39 * 39 * 32) to (18 * 18 * 64)
         self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=4, stride=2, padding=0)
@@ -665,19 +687,22 @@ def main():
     start_time = time.time()
 
     # Training
-    # for i in range(EPISODE):
-    for i in range(3):
+    for i in range(EPISODE):
+    # for i in range(3):
 
         # Initialization for each episode
         state1 = env.reset()
         state2, _, _, _ = env.step(0)
         state3, _, _, _ = env.step(0)
+        state4, _, _, _ = env.step(0)
         processed_state1 = agent.process_state(state1)
         processed_state2 = agent.process_state(state2)
         processed_state3 = agent.process_state(state3)
+        processed_state4 = agent.process_state(state4)
         stack_state = agent.stack_state(state1=processed_state1,
                                         state2=processed_state2,
-                                        state3=processed_state3)
+                                        state3=processed_state3,
+                                        state4=processed_state4)
         total_reward = 0
         time_step = 0
         start_time_episode = time.time()
@@ -718,10 +743,12 @@ def main():
 
             processed_state1 = processed_state2
             processed_state2 = processed_state3
-            processed_state3 = agent.process_state(state)
+            processed_state3 = processed_state4
+            processed_state4 = agent.process_state(state)
             next_stack_state = agent.stack_state(state1=processed_state1,
                                                  state2=processed_state2,
-                                                 state3=processed_state3)
+                                                 state3=processed_state3,
+                                                 state4=processed_state4)
 
             total_reward += reward
 
@@ -741,9 +768,9 @@ def main():
                 # f'Action buffer: {memory.action_buffer[:15]}\t'
                 # f'Tree: {np.array_repr(memory.tree.tree[:10]).replace(nl, "")}'
             # )
-            print(f'\rTime step per episode: {time_step}\t| '
-                  f'Action: {action}\t| '
-                  , end='')
+            # print(f'\rTime step per episode: {time_step}\t| '
+            #       f'Action: {action}\t| '
+            #       , end='')
 
             # break
             if done:
@@ -759,7 +786,8 @@ def main():
         #       f'Current write position in memory: {memory.pos}')
 
         print(
-            f'\nEpisode: {i:,}\t| '
+            # f'\nEpisode: {i:,}\t| '
+            f'Episode: {i:,}\t| '
             f'Average score: {np.mean(ma_reward_deque):.1f}\t| '
             f'Episode score: {total_reward:.1f}\t| '
             f'Epsilon action: {agent.action_algorithm.epsilon:.3f}\t| '
@@ -776,13 +804,22 @@ def main():
             f'Last action: {action}\t| '
         )
 
+        if i % 5000 == 0:
+            # Save score
+            pickle.dump(reward_list, open(SCORE, 'wb'))
+            print('Saved periodic score')
+
+            # Save model
+            torch.save(agent.target_model.state_dict(), MODEL)
+            print('Saved periodic model')
+
     # Save score
-    # pickle.dump(reward_list, open(SCORE, 'wb'))
-    # print('Saved score')
+    pickle.dump(reward_list, open(SCORE, 'wb'))
+    print('Saved score')
 
     # Save model
-    # torch.save(agent.target_model.state_dict(), MODEL)
-    # print('Saved model')
+    torch.save(agent.target_model.state_dict(), MODEL)
+    print('Saved model')
 
 
 if __name__ == '__main__':
