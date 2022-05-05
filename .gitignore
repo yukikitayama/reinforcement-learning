@@ -2,3 +2,5 @@
 env/
 # My personal expression for testing purpose pythons
 test_*.py
+.idea/
+
