@@ -28,5 +28,5 @@ a method to efficiently estimate values.
 **Model**, give a state and action, predicts the resultant next state and next reward. **Model-based methods** are RL 
 methods using models and planning. **Model-free methods** are trial-and-error learners without planning.
 
-Read from p.7 1.4 limitations and scope
- 
+The concepts of **value** and **value function** are key to most of the reinforcement learning methods. Value functions 
+are important for efficient search in the space of policies.
