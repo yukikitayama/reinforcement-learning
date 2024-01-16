@@ -82,3 +82,9 @@ This is an repository of reinforcement learning that I'm currently working on.
 * Coursera Reinforcement Learning Specialization by University of Alberta (https://www.coursera.org/specializations/reinforcement-learning)
 * Udacity Deep Reinforcement Learning Nanodegree (https://www.udacity.com/course/deep-reinforcement-learning-nanodegree--nd893)
 * Reading papers from OpenAI Spinning Up key papers (https://spinningup.openai.com/en/latest/spinningup/keypapers.html)
+
+## Paper
+
+- Algorithms for Sequential Decision Making, Michael Lederman Littman
+  - The thesis document submitted to the Graduate School at Brown University in 1996.
+

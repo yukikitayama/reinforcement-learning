@@ -28,5 +28,37 @@ a method to efficiently estimate values.
 **Model**, give a state and action, predicts the resultant next state and next reward. **Model-based methods** are RL 
 methods using models and planning. **Model-free methods** are trial-and-error learners without planning.
 
-Read from p.7 1.4 limitations and scope
- 
+The concepts of **value** and **value function** are key to most of the reinforcement learning methods. Value functions 
+are important for efficient search in the space of policies.
+
+## Agent
+
+The system  responsible for interacting with the world and making decisions.
+
+## State
+
+The state of the environment is a description of everything that might change from moment to moment.
+
+## Environment
+
+Anything external to the agent.
+
+Transition, the environment changes from state to state, can be said **stochastic** if it's not necessary that the same 
+transition occur every time the agent takes a particular action in a particular state.
+
+But the **probability** of the stochastic transition must remain constant over time. If it's not constant, it's called 
+**non-stationary** environments.
+
+**Synchronous** environment is where one state transition occurs for each action the agent takes.
+
+**Asynchronous** environment is where the environment doesn't wait for the agent to take action but instead changes continually.
+
+## Reward
+
+## Policy
+
+People often use the word policy as an abbreviation for stationary policy.
+
+Policies can be stochastic like flipping a weighted coin to decide action.
+
+Read from P.38 1.3.2 planning algorithms, Littman PDF
