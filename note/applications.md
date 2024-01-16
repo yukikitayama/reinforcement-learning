@@ -79,10 +79,21 @@ Atari 2600 for algorithm learning.
 What's impressive is that a good performance was achieved by the same learning system over the widely varying games 
 without relying on any game-specific modifications.
 
-Read from P.461.
+## AlphaGo
 
+It combines deep ANN, supervised learning, Monte Carlo tree search, and reinforcement learning.
 
+**AlphaGo** used a large database of expert human moves for supervised learning, while **AlphaGo Zero** used only reinforcement learning and no human data.
 
+AlphaGo used deep convolution ANN to approximate optimal value functions.
+
+Asynchronous policy and value MCTS, APV-MCTS
+
+SL-policy network
+
+Value network
+
+Read from P.466
 
 
 
