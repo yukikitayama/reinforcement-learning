@@ -16,6 +16,32 @@ possible next states instead of a sample next state.
 
 DP algorithms have the array of `v_k(s)` and typically iterativelly updated in-place.
 
-REad from P.100
+## Policy improvement theorem
+
+**Policy improvement** is the process of making a new policy that improves on an original policy, by making it greedy 
+with respect to the value function of the original policy.
+
+## Policy iteration
+
+Sequence of policy evaluations and policy iterations to converge to an optimal policy and the optimal value function in 
+a finite number of iterations.
+
+## Value iteration
+
+[placeholder]
+
+## Asynchronous DP
+
+A drawback of DP methods is that it involves operations over the entire state set of the MDP, and it's expensive if the 
+state set is very large.
+
+The values of some states may be updated several times before the values of others are updated once.
+
+
+
+
+REad from P.107
+
+
 
 
