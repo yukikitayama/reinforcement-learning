@@ -37,11 +37,28 @@ state set is very large.
 
 The values of some states may be updated several times before the values of others are updated once.
 
+We can run an iterative DP algorithm at the same time that an agent is actually experiencing the MDP
 
+## Generalized policy iteration (GPI)
 
+Interaction of policy-evaluation adn policy-improvement.
 
-REad from P.107
+If both the evaluation process and improvement process stabilize, then the value function and policy must be optimal.
 
+Policy evaluation is to make the value function consistent with the current policy.
 
+Policy improvement is to make the policy greedy with respect to the current value function.
 
+## Efficiency
 
+In the worst case, DP takes the polynomial time.
+
+DP has the curse of dimensionality, cannot work with a large state set.
+
+On large state space problem, **asynchronous** DP method is preferred.
+
+## Bootstrapping
+
+DP methods update **estimates** of the values of states based on **estimates** of the values of successor states.
+
+Update of estimate based on the other estimates is called **boostraooing**.
