@@ -2,6 +2,20 @@
 
 MDPs = Markov Decision Processes.
 
+The following things defines the Markov Decision Processes.
+- States
+- Actions
+- Model
+- Reward
+- Markov property
+- Stationary
+
+This Markov decision processes defines a problem, and **policy** is the solution to the problem.
+
+What we want to achieve is to find out, given a problem of Markov Decision Processes, how we can get to the optimal policy.
+
+---
+
 Involve
 - Delayed reward
 - Need to trade off immediate and delayed reward.
@@ -24,14 +38,39 @@ Bellman equations
 
 In a finite MDP, the sets of states, actions, and rewards all have a finite number of elements.
 
-**Markov property**, the state must include information about all aspects of the past agent-environment interaction that 
+## Markov property
+
+the state must include information about all aspects of the past agent-environment interaction that 
 make a difference for the future.
 
 **Reward hypothesis** - The agent's goal is to maximize the total amount of reward (scalar signal) it receives, not immediate reward, but cumulative reward in 
 the long run. 
 
+## Reward
+
+Can be described as `R(s)`, `R(s, a)`, or `R(s, a, s')`, but they are mathematically equivalent.
+
 It's critical the rewards we set up truly indicate what we want to achieve. For example, in chess-playing agent, the 
 reward should be given only for actually winning, not for achieving subgoals like taking its opponent's pieces. 
+
+If the model supplies a small negative reward, and the terminal state gives a positive reward, it encourages the agent 
+to end the game. But minor changes matter.
+
+If you design MDP, reward is a domain knowledge. You need to think carefully how you set a reward. Reward tells you how 
+to get to the end
+
+### Sequence of rewards
+
+It assumes the MDP has the infinite time horizons. If it's a finite time horizon, you could have multiple policies for 
+one state. Without infinite horizon assumption, you will lose the stationarity in your policy.
+
+Utility of sequences, if `U(s0, s1, s2, ...) > U(s0, s'1, s'2, ...)`, then `U(s1, s2, ...) > U(s'1, s'2, ...)` **Stationary preferences**
+
+`U(s0, s1, s2, ...) = sum_{inf}_{t = 0} R(s_t) = sum_{inf}_{t = 0} gamma^t R(s_t) 0 <= gamma < 1`
+
+`<= sum_{inf}_{t = 0} gamma^t R_max = R_max / (1 - gamma)` **Geometric series**
+
+Discounted reward give us the geometric series. It allows us to add infinite number of numbers but gives us the finite number.
 
 We seek to maximize the **expected return** `G_t`, function of the reward sequence.
 
@@ -62,7 +101,15 @@ continuing task.
 be in a given state (or how good it is to perform a given action in a given state). How good is defined in the expected 
 return.
 
+## Policy
+
 **Policy** is a mapping from states to probabilities of selecting each action `pi(a | s)`
+
+`pi(s) -> a`
+
+`pi*` is the optimal policy. It maximizes the long-term expected reward.
+
+
 
 `v_pi(s)` is the value function of a state `s` under a policy `pi`. It's the expected return when starting in `s` and 
 following `pi` thereafter. The value of the terminal state is always 0. `v_pi` is **state-value function for policy pi**.
@@ -93,5 +140,12 @@ using arrays or tables, and the corresponding methods are called **tabular metho
 But in many cases, there are far more states than table entries, so we need to use compact parameterized function 
 representation and the functions must be approximated.
 
-Read from PDF P.84 optimal policies and optimal value functions
+## Model (Transition model, transition function)
+
+Rules of the game we are playing, the physics of the world.
+
+`T(s, a, s') ~ Pr(s' | s, a)` probability that the agent will visit `s'` when the agent are at `s` and take action `a`.
+
+
+
 
