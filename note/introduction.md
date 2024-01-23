@@ -61,4 +61,40 @@ People often use the word policy as an abbreviation for stationary policy.
 
 Policies can be stochastic like flipping a weighted coin to decide action.
 
-Read from P.38 1.3.2 planning algorithms, Littman PDF
+**Stationary policy (or universal plan)** is a mapping from state to action. It's very large. There's always an optimal 
+stationary policy for any MDP.
+
+### Evaluating a policy
+
+1. State transitions to immediate rewards
+2. Truncate the infinite sequence of state, action, reward according to horizon
+3. Summarize sequence by **return**, sum of discounted rewards
+4. Summarize over all the sequences by taking average (expectation)
+
+This will give us the **long-term expected reward, value or utility**.
+
+## Plan 
+
+**Plan** is a fixed sequence of actions. It works because you have understanding of the environment. And the environment 
+is deterministic.
+
+**Conditional plan** includes the if statements.
+
+## Learner
+
+Evaluating a learner depends on
+- Value of the returned policy
+- Computational complexity (we like the learner is obtained quickly, cpu)
+- Sample (experience) complexity (Amount of data required, memory)
+
+## Bellman optimality equation
+
+The value of a state under an optimal policy must equal the expected return for the best action from that state. ((3.20) in RL book 3.6)
+
+## Policy improvement theorem
+
+It assures us that the policies from policy iterations are better than the original random policy.
+
+
+
+

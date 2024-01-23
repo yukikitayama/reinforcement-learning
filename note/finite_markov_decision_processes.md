@@ -72,6 +72,10 @@ Utility of sequences, if `U(s0, s1, s2, ...) > U(s0, s'1, s'2, ...)`, then `U(s1
 
 Discounted reward give us the geometric series. It allows us to add infinite number of numbers but gives us the finite number.
 
+## Utility
+
+The expected long-term rewards. It's different from reward, which is an immediate outcome.
+
 We seek to maximize the **expected return** `G_t`, function of the reward sequence.
 
 **Episode**, subsequences of the agent-environment interaction. Each episode ends in the **terminal state**, and reset 
@@ -134,7 +138,7 @@ successor states and their values.
 In practice, optimal policies can be generated only with extreme computational cost. It's usually not possible to simply 
 compute an optimal policy by solving the Bellman optimality equation.
 
-**Tabular case** is the case where the tasks are are small, finite state sets, and it's possible to form the approximations
+**Tabular case** is the case where the tasks are small, finite state sets, and it's possible to form the approximations
 using arrays or tables, and the corresponding methods are called **tabular methods**.
 
 But in many cases, there are far more states than table entries, so we need to use compact parameterized function 
@@ -146,6 +150,12 @@ Rules of the game we are playing, the physics of the world.
 
 `T(s, a, s') ~ Pr(s' | s, a)` probability that the agent will visit `s'` when the agent are at `s` and take action `a`.
 
+## V and Q
 
+Value function (V) and action-value function (Q) looks similar but the action-value function is more useful in reinforcement learning.
+
+Because we will know Q by taking expectation from the experience, and we don't need to know reward function and transition function in advance.
+
+But value function requires us to know reward function and transition function in advance.
 
 
