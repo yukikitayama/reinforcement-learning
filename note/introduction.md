@@ -95,6 +95,10 @@ The value of a state under an optimal policy must equal the expected return for 
 
 It assures us that the policies from policy iterations are better than the original random policy.
 
+## Value iteration
 
+Turn the Bellman optimality equation into an update rule.
+
+Interposing multiple policy evaluation sweeps between each policy improvement sweep makes the convergence faster.
 
 

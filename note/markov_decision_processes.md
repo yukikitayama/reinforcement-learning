@@ -1,6 +1,11 @@
-# Finite Markov Decision Processes
+# Markov Decision Processes
 
 MDPs = Markov Decision Processes.
+
+MDP is a model of an agent interacting synchronously with its environment.
+
+The assumption is, no uncertainty about the agent's current state, though there may be uncertainty about the effect of 
+an agent's actions.
 
 The following things defines the Markov Decision Processes.
 - States
@@ -46,7 +51,7 @@ make a difference for the future.
 **Reward hypothesis** - The agent's goal is to maximize the total amount of reward (scalar signal) it receives, not immediate reward, but cumulative reward in 
 the long run. 
 
-## Reward
+## Reward (reward function)
 
 Can be described as `R(s)`, `R(s, a)`, or `R(s, a, s')`, but they are mathematically equivalent.
 
@@ -113,7 +118,7 @@ return.
 
 `pi*` is the optimal policy. It maximizes the long-term expected reward.
 
-
+**Stationary policy** `pi: S -> A` specifies, for each state, an action to be taken.
 
 `v_pi(s)` is the value function of a state `s` under a policy `pi`. It's the expected return when starting in `s` and 
 following `pi` thereafter. The value of the terminal state is always 0. `v_pi` is **state-value function for policy pi**.
@@ -144,7 +149,7 @@ using arrays or tables, and the corresponding methods are called **tabular metho
 But in many cases, there are far more states than table entries, so we need to use compact parameterized function 
 representation and the functions must be approximated.
 
-## Model (Transition model, transition function)
+## Model (Transition model, transition function, state transition function)
 
 Rules of the game we are playing, the physics of the world.
 
@@ -157,5 +162,28 @@ Value function (V) and action-value function (Q) looks similar but the action-va
 Because we will know Q by taking expectation from the experience, and we don't need to know reward function and transition function in advance.
 
 But value function requires us to know reward function and transition function in advance.
+
+## Value function
+
+For how to compute a value function, the value function for policy `pi` is the unique solution of a set of simultaneous linear equations, one for each state 
+`s`. The system of linear equations can be solved by Gaussian elimination or any of a number of other methods.
+
+## Q function
+
+`Q(s, a)`, state-action value function
+
+## Value iteration
+
+**Bellman error magnitude** is the maximum difference between two successive value functions.
+
+## Policy iteration
+
+The initial value function `v_0` is defined to be zero for all states
+
+Policy iteration can converge in fewer iterations than value iteration
+
+But the increased speed of convergence of policy iteration can be more than offset by the increased computation per 
+iteration.
+
 
 
