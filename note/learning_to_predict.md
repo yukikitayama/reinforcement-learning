@@ -14,3 +14,12 @@ TD methods are
 
 As methods for efficiently learning to predict **arbitrary events**, not just goal-related ones.
 
+The paper is concerned with multi-step prediction problems
+
+Notations
+- `x_t` state
+- `z` reward
+- `w` modifiable parameters or weights for prediction
+- `P_t` estimate of `z`, can be `P(x_t, w)`
+
+Read from 2.1 single-step...

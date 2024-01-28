@@ -83,6 +83,38 @@ Both TD(0) and TD(1) have updates based on differences between temporally succes
 - TD(1) has `e(s)` eligibility, but TD(0) doesn't
 - TD(1) do for all states, but TD(0) only does for `s_t-1` only the previous state.
 
+## Sarsa
+
+This estimates action-value function `q_pi(s, a)` for the current behavior policy `pi` and for all states `s` and actions `a`
+
+It requires the quintuple of event `(S_t, A_t, R_t+1, S_t+1, A_t+1)`
+
+The update is `Q(S_t, A_t) <- Q(S_t, A_t) + alpha [ R_t+1 + gamma Q(S_t+1, A_t+1) - Q(S_t, A_t) ]`
+
+`Q(s, a)` are arbitrarily initialized for example `Q(s, a) = 0` for all `s`, `a`.
+
+Sarsa can learn during the episode, unlike Monte Carlo
+
+Sara is **on-policy**.
+
+**Expected Sarsa** uses the expected value of `Q(S_t+1, A_t+1)` over all `a`, taking into account how likely each action 
+is under the current policy.
+
+`Q(S_t, A_t) <- Q(S_t, A_t) + alpha [ R_t+1 + gamma sum_a pi(a | S_t+1) Q(S_t+1, a) - Q(S_t, A_t) ]`
+
+Given the next state `S_t+1`, this algorithm moves **deterministically** in the same direction as Sarsa moves **in expectation**.
+
+## Maximization bias
+
+When true value `q(s, a)` is 0, but estimated value `Q(s, a)` are uncertain and distributed randomly positive and negative values. 
+The maximum of the true value is 0, but the maximum of the estimated values is positive. This is **maximization bias**.
+
+Q-learning could suffer from this maximization bias initially in episodes.
+
+**Double learning** is a way to avoid maximization bias. Have 2 estimates `Q_1(a)` and `Q_2(a)`. `Q_2(A*) = Q_2(argmax_a Q_1(a))` 
+This estimate is **unbiased** because `E[Q_2(A*)] = q(A*)`
+
+We have 2 estimates, but only 1 estimate is updated on each play.
 
 
 Read from P.151 6.4 sarsa
