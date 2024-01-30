@@ -116,5 +116,25 @@ This estimate is **unbiased** because `E[Q_2(A*)] = q(A*)`
 
 We have 2 estimates, but only 1 estimate is updated on each play.
 
+## n-step TD method
+
+The method between **Monte Carlo (MC)** method and **one-step temporal difference (TD)** method.
+
+n-step methods enable **bootstrapping** to occur over multiple steps.
+
+n-step methods is intro to **eligibility trace**.
+
+**n-step TD method** is the temporal difference extends over n steps.
+
+**One-step return** means the first reward plus the discounted estimated value of the next state
+
+`G_t:t+1 = R_t+1 + gamma V_t(S_t+1)`
+
+**Two-step retrun** is `G_t:t+2 = R_t+1 + gamma R_t+2 + gamma^2 V_t+1(S_t+2)`
+
+**n-step TD** is the state-value learning algorithm by `V_t+n(S_t) = V_t+n-1(S_t) + alpha [ G_t:t+n - V_t+n-1(S_t) ]`
+
+**Error reduction property** supports that n-step TD method converges to the correct predictions
+
 
 Read from P.151 6.4 sarsa
