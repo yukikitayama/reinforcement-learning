@@ -134,6 +134,8 @@ n-step methods is intro to **eligibility trace**.
 
 **n-step TD** is the state-value learning algorithm by `V_t+n(S_t) = V_t+n-1(S_t) + alpha [ G_t:t+n - V_t+n-1(S_t) ]`
 
+**n-step TD** is the algorithm to update the current state value by adding the error between the **n-step return** and current state value scaled by learning rate `alpha` to the current state value.
+
 **Error reduction property** supports that n-step TD method converges to the correct predictions
 
 
