@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # Parameter
 LENGTH = 30
 SEED = 0
-PATH_SAVEFIG_01 = '../image/forex_env_test.png'
+PATH_SAVEFIG_01 = '../image/experiment/forex_env_test.png'
 POSITION_STATE_DIM = 3
 
 
